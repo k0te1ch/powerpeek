@@ -26,6 +26,95 @@ constexpr wchar_t kActivationMessage[] = L"PowerPeek.ActivateExistingInstance";
 // system colour rather than an arbitrary one.
 constexpr D2D1_COLOR_F kFallbackAccent{0.0f, 0x78 / 255.0f, 0xD4 / 255.0f, 1.0f};
 
+// DWMWA_SYSTEMBACKDROP_TYPE arrived with Windows 11 22H2. Windows 11 21H2 could do Mica
+// only through a different, undocumented attribute; rather than carry two undocumented
+// routes, that build is treated as having no system backdrop and degrades to blur.
+constexpr DWORD kFirstBuildWithSystemBackdrop = 22621;
+
+// The undocumented Windows 10 route.
+//
+// user32!SetWindowCompositionAttribute has never been documented or declared in any SDK
+// header, so it is resolved by name and treated as absent when it does not answer. The
+// structures below mirror what the entry point reads; they are named for what they do
+// rather than copied from a leaked header.
+enum AccentState : int {
+    kAccentDisabled = 0,
+    kAccentBlurBehind = 3,
+    kAccentAcrylicBlurBehind = 4,
+};
+
+struct AccentPolicy {
+    int state;
+    int flags;
+    // ABGR. Only the alpha carries: the window paints its own material colour on top, so
+    // the system layer is asked for the blur and for almost no tint of its own.
+    unsigned int gradientColor;
+    int animationId;
+};
+
+struct WindowCompositionAttributeData {
+    int attribute;
+    void* data;
+    SIZE_T size;
+};
+
+constexpr int kWindowCompositionAccentPolicy = 19;
+constexpr unsigned int kUntintedBlur = 0x01000000u;
+
+using SetWindowCompositionAttributeFn = BOOL(WINAPI*)(HWND, WindowCompositionAttributeData*);
+
+SetWindowCompositionAttributeFn accentEntryPoint() {
+    static SetWindowCompositionAttributeFn const entry = [] {
+        // user32 is loaded in every process that has a window, so this never loads a
+        // library and never has one to free.
+        HMODULE const user32 = GetModuleHandleW(L"user32.dll");
+        auto const found =
+            user32 ? reinterpret_cast<SetWindowCompositionAttributeFn>(
+                         GetProcAddress(user32, "SetWindowCompositionAttribute"))
+                   : nullptr;
+        if (!found) {
+            log::info(L"This system cannot blur behind a window; the backdrop stays opaque");
+        }
+        return found;
+    }();
+    return entry;
+}
+
+bool systemBackdropAvailable() { return osBuildNumber() >= kFirstBuildWithSystemBackdrop; }
+
+bool applyAccentPolicy(HWND window, AccentState state) {
+    SetWindowCompositionAttributeFn const entry = accentEntryPoint();
+    if (!entry) {
+        return false;
+    }
+
+    bool const enabling = state != kAccentDisabled;
+    AccentPolicy policy{state, 0, enabling ? kUntintedBlur : 0u, 0};
+    WindowCompositionAttributeData data{kWindowCompositionAccentPolicy, &policy, sizeof(policy)};
+    if (entry(window, &data)) {
+        return enabling;
+    }
+
+    if (enabling) {
+        log::warning(L"The system refused to blur behind the window; leaving it opaque");
+    }
+    return false;
+}
+
+// Hands the window frame to the compositor, or takes it back. A backdrop is painted into
+// the frame, so it only appears once the frame covers the client area, and the system drop
+// shadow comes back with it -- which is what replaces the shadow the window stops drawing.
+void setFrameOwnedBySystem(HWND window, bool owned) {
+    DWMNCRENDERINGPOLICY const policy = owned ? DWMNCRP_ENABLED : DWMNCRP_DISABLED;
+    DwmSetWindowAttribute(window, DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
+
+    MARGINS const margins = owned ? MARGINS{-1, -1, -1, -1} : MARGINS{0, 0, 0, 0};
+    HRESULT const hr = DwmExtendFrameIntoClientArea(window, &margins);
+    if (FAILED(hr)) {
+        log::debug(L"The window frame could not be extended: {}", describeHresult(hr));
+    }
+}
+
 std::wstring readRegistryString(wchar_t const* subkey, wchar_t const* value) {
     DWORD bytes = 0;
     if (RegGetValueW(HKEY_CURRENT_USER, subkey, value, RRF_RT_REG_SZ, nullptr, nullptr,
@@ -138,6 +227,76 @@ void setRoundedCorners(HWND window, bool rounded) {
     if (FAILED(hr)) {
         log::debug(L"Corner preference rejected: {}", describeHresult(hr));
     }
+}
+
+bool backdropSupported(BackdropMode mode) {
+    switch (mode) {
+        case BackdropMode::Opaque:
+            return true;
+        case BackdropMode::Blur:
+            return accentEntryPoint() != nullptr;
+        case BackdropMode::Acrylic:
+            // Windows 11 has a documented acrylic; Windows 10 can only reach it through the
+            // undocumented route, and does it badly (see applyWindowBackdrop).
+            return systemBackdropAvailable() || accentEntryPoint() != nullptr;
+        case BackdropMode::Mica:
+            return systemBackdropAvailable();
+    }
+    return false;
+}
+
+BackdropMode effectiveBackdrop(BackdropMode requested) {
+    if (backdropSupported(requested)) {
+        return requested;
+    }
+    // One step at a time, so a system that has blur but no material still gets something.
+    if (requested != BackdropMode::Blur && backdropSupported(BackdropMode::Blur)) {
+        return BackdropMode::Blur;
+    }
+    return BackdropMode::Opaque;
+}
+
+bool backdropRoundsCorners() { return isWindows11OrGreater(); }
+
+bool applyWindowBackdrop(HWND window, BackdropMode mode) {
+    BackdropMode const resolved = effectiveBackdrop(mode);
+
+    if (resolved == BackdropMode::Opaque) {
+        applyAccentPolicy(window, kAccentDisabled);
+        if (systemBackdropAvailable()) {
+            DWM_SYSTEMBACKDROP_TYPE const none = DWMSBT_NONE;
+            DwmSetWindowAttribute(window, DWMWA_SYSTEMBACKDROP_TYPE, &none, sizeof(none));
+        }
+        setFrameOwnedBySystem(window, false);
+        setRoundedCorners(window, false);
+        return false;
+    }
+
+    // The frame has to belong to the compositor before any of this shows, and the corners
+    // have to be rounded before the backdrop stops being a hard-edged rectangle.
+    setFrameOwnedBySystem(window, true);
+    setRoundedCorners(window, true);
+
+    if (systemBackdropAvailable() && resolved != BackdropMode::Blur) {
+        DWM_SYSTEMBACKDROP_TYPE const type =
+            resolved == BackdropMode::Mica ? DWMSBT_MAINWINDOW : DWMSBT_TRANSIENTWINDOW;
+        HRESULT const hr =
+            DwmSetWindowAttribute(window, DWMWA_SYSTEMBACKDROP_TYPE, &type, sizeof(type));
+        if (SUCCEEDED(hr)) {
+            return true;
+        }
+        log::warning(L"The window material was refused ({}); falling back to a plain blur",
+                     describeHresult(hr));
+    }
+
+    // Windows 10 gets here, and so does Blur everywhere.
+    //
+    // Acrylic is deliberately not the Windows 10 default: on that generation the acrylic
+    // blur is recomputed against the desktop on every move, and dragging a window with it
+    // stutters to single-digit frame rates. Plain blur has no such defect.
+    return applyAccentPolicy(window, resolved == BackdropMode::Acrylic
+                                         ? kAccentAcrylicBlurBehind
+                                         : kAccentBlurBehind);
 }
 
 bool systemUsesLightTheme() {

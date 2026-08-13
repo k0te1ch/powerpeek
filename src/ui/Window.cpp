@@ -57,6 +57,7 @@ struct D2DWindow::Impl {
     SIZE minimumSizeDip{360, 280};
     bool resizable = true;
     bool maximised = false;
+    bool systemBackdrop = false;
     bool painting = false;
     bool framePending = false;
     bool wantsAnotherFrame = false;
@@ -131,6 +132,7 @@ bool D2DWindow::createWindow(CreateParams const& params) {
 
     // Make it deterministic that DWM draws no frame of its own around us, and that Windows 11
     // does not round the window rect -- rounding it would clip the shadow margin's corners.
+    // setBackdrop reverses both once the window stops drawing that margin.
     DWMNCRENDERINGPOLICY const policy = DWMNCRP_DISABLED;
     DwmSetWindowAttribute(m_hwnd, DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
     platform::setRoundedCorners(m_hwnd, false);
@@ -193,8 +195,40 @@ bool D2DWindow::isMaximised() const { return m_impl->maximised; }
 
 D2D1_RECT_F D2DWindow::bodyRect() const {
     D2D1_SIZE_F const size = sizeDip();
-    float const margin = m_impl->maximised ? 0.0f : Metrics::shadowMargin;
+    float const margin =
+        m_impl->maximised || m_impl->systemBackdrop ? 0.0f : Metrics::shadowMargin;
     return D2D1_RECT_F{margin, margin, size.width - margin, size.height - margin};
+}
+
+void D2DWindow::setBackdrop(BackdropMode mode) {
+    if (!m_hwnd) {
+        return;
+    }
+    bool const active = platform::applyWindowBackdrop(m_hwnd, mode);
+    if (active == m_impl->systemBackdrop) {
+        invalidate();
+        return;
+    }
+    m_impl->systemBackdrop = active;
+
+    // The body just grew or shrank by the whole margin on every side, and the frame the
+    // compositor draws around it changed with it. Nothing moves the window, so only a
+    // frame change tells the system to re-ask for the non-client size.
+    SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    invalidate();
+}
+
+bool D2DWindow::hasSystemBackdrop() const { return m_impl->systemBackdrop; }
+
+float D2DWindow::cornerRadius() const {
+    if (m_impl->maximised) {
+        return 0.0f;
+    }
+    if (m_impl->systemBackdrop) {
+        return platform::backdropRoundsCorners() ? Metrics::windowCornerRadius : 0.0f;
+    }
+    return Metrics::windowCornerRadius;
 }
 
 bool D2DWindow::isCaptionArea(D2D1_POINT_2F) const { return false; }

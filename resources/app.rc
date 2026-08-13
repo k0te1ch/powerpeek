@@ -38,7 +38,7 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName",      "k0te1ch"
-            VALUE "FileDescription",  "Xbox controller battery monitor"
+            VALUE "FileDescription",  "PowerPeek device battery monitor"
             VALUE "FileVersion",      PP_VERSION_RC_STRING
             VALUE "InternalName",     "PowerPeek"
             VALUE "LegalCopyright",   "Copyright (C) 2026 k0te1ch. GPL-3.0-or-later."

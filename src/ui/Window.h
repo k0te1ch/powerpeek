@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 
+#include "core/Settings.h"
 #include "core/Win.h"
 #include "ui/Graphics.h"
 
@@ -82,8 +83,31 @@ protected:
     bool isMaximised() const;
 
     // The visible body: the window rect inset by the shadow margin, or the whole window when
-    // maximised. Derived classes draw inside this and hit-test against it.
+    // maximised or while a system backdrop is painted. Derived classes draw inside this and
+    // hit-test against it.
     D2D1_RECT_F bodyRect() const;
+
+    // Asks the system for a backdrop behind the window, degrading per the running build.
+    //
+    // The two frames are mutually exclusive and this is the switch between them. Without a
+    // backdrop the window owns its frame: it reserves a transparent margin, draws its own
+    // rounded corners into it and blurs its own shadow there. A system backdrop is painted
+    // across the entire window rectangle, underneath every pixel this window draws, and no
+    // API exists to give the compositor the real silhouette -- so that margin would come
+    // back as a hard-edged rectangle of blurred desktop with the shadow buried under it.
+    // The only clip on offer is a window region, which is aliased and would saw the corners
+    // and the shadow off anyway. So a backdrop collapses the margin to zero, the window
+    // rectangle becomes the body, and the compositor supplies the corners and the shadow it
+    // is already drawing for the frame.
+    void setBackdrop(BackdropMode mode);
+
+    // True while the system is painting a backdrop, in which case there is no shadow margin
+    // and the derived class must not draw a shadow of its own.
+    bool hasSystemBackdrop() const;
+
+    // The radius the body should be drawn at: zero when maximised, and zero under a backdrop
+    // the system leaves square, so the drawn body and the backdrop rectangle agree.
+    float cornerRadius() const;
 
     // Asks for another frame after the compositor has shown this one; the render loop
     // keeps going while any frame requests a successor.

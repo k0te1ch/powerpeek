@@ -123,6 +123,20 @@ constexpr Entry kTable[] = {
     {Text::TrayStyleBattery, L"Battery", L"Батарея"},
     {Text::TrayStyleRing, L"Ring", L"Кольцо"},
     {Text::TrayStylePercentage, L"Percentage", L"Проценты"},
+    {Text::BackdropLabel, L"Window backdrop", L"Фон окна"},
+    {Text::BackdropDesc, L"What shows through behind the window. Only what this system can "
+                         L"actually draw is offered.",
+     L"Что видно за окном. Предлагается только то, что эта система действительно умеет."},
+    {Text::BackdropOpaque, L"Solid", L"Сплошной"},
+    {Text::BackdropBlur, L"Blur", L"Размытие"},
+    {Text::BackdropAcrylic, L"Acrylic", L"Акрил"},
+    {Text::BackdropMica, L"Mica", L"Слюда"},
+    {Text::WindowOpacity, L"Window opacity", L"Непрозрачность окна"},
+    {Text::WindowOpacityDesc,
+     L"How much of the backdrop comes through. It stops well short of invisible so that "
+     L"text stays readable over any wallpaper.",
+     L"Насколько сильно проступает фон. Ползунок не доходит до прозрачности, при которой "
+     L"текст перестал бы читаться на любых обоях."},
     {Text::HistoryEnabled, L"Record history", L"Записывать историю"},
     {Text::HistoryEnabledDesc,
      L"Kept on this computer only. Nothing is ever sent anywhere.",
@@ -139,6 +153,8 @@ constexpr Entry kTable[] = {
      L"Без телеметрии, без сети, без установки."},
     {Text::OpenDataFolder, L"Open data folder", L"Открыть папку данных"},
     {Text::OpenSourceRepository, L"Source code", L"Исходный код"},
+    {Text::AboutAuthor, L"Made by k0te1ch", L"Автор — k0te1ch"},
+    {Text::SupportAuthor, L"Support the author", L"Поддержать автора"},
 
     {Text::MenuOpen, L"Open", L"Открыть"},
     {Text::MenuRefresh, L"Refresh", L"Обновить"},

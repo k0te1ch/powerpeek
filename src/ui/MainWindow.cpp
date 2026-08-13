@@ -237,6 +237,7 @@ bool MainWindow::create(Dependencies dependencies) {
     // Only ever seen in the Alt+Tab thumbnail and the taskbar preview, since the window draws
     // no system frame of its own -- but wrong there is still wrong.
     platform::setTitleBarDarkMode(handle(), theme().isDark());
+    setBackdrop(SettingsStore::instance().get().backdrop);
     buildShell();
     return true;
 }
@@ -336,6 +337,13 @@ void MainWindow::settingsChanged(Settings const& current, Settings const& previo
     if (!m_impl->shell) {
         return;
     }
+    if (current.backdrop != previous.backdrop) {
+        // Before the `applying` guard below: the settings page is what writes this, and the
+        // frame has to change under it rather than wait for the page to be rebuilt.
+        setBackdrop(current.backdrop);
+    } else if (current.windowOpacity != previous.windowOpacity) {
+        invalidate();
+    }
     if (current.language != previous.language) {
         m_impl->rebuildPending = true;
         invalidate();
@@ -405,12 +413,22 @@ void MainWindow::onPaint(ID2D1DeviceContext& ctx, D2D1_SIZE_F) {
     Canvas canvas(ctx);
     auto const& palette = theme().colors();
     D2D1_RECT_F const body = bodyRect();
-    float const radius = isMaximised() ? 0.0f : Metrics::windowCornerRadius;
+    float const radius = cornerRadius();
 
-    if (!isMaximised()) {
+    // Under a backdrop the window rectangle is the body, so there is no transparent margin
+    // left to blur a shadow into -- and none is wanted: the compositor is already drawing
+    // its own around the frame it now owns.
+    if (!isMaximised() && !hasSystemBackdrop()) {
         m_impl->shadow.draw(canvas, body, radius, palette.shadow);
     }
-    fillRounded(canvas, body, radius, palette.windowBackground);
+
+    // Everything above this fill is a layer on top of it: the page area, the settings cards
+    // and the flyouts all draw over the window background rather than replacing it. So the
+    // window background is the only thing thinned, and the contrast floor it is clamped to
+    // (Settings.h) is what keeps body text legible whatever the desktop behind it looks like.
+    D2D1_COLOR_F background = palette.windowBackground;
+    background.a *= SettingsStore::instance().get().windowOpacity;
+    fillRounded(canvas, body, radius, background);
 
     // Ticked before the layout: an animation that changes how much room a widget needs has to
     // be reflected in this frame, not in the next one.

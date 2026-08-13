@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "core/Settings.h"
 #include "core/Win.h"
 
 namespace peek::platform {
@@ -25,6 +26,24 @@ void setTitleBarDarkMode(HWND window, bool dark);
 // draws its own corners and background regardless, so these only remove a redundant
 // square DWM frame when the OS can do better.
 void setRoundedCorners(HWND window, bool rounded);
+
+// True when the running build can actually paint `mode` behind a window. Opaque is always
+// true; the rest depend on the build, so the settings page asks before offering a mode.
+bool backdropSupported(BackdropMode mode);
+
+// Resolves a stored preference against this system: Mica and Acrylic fall back to Blur,
+// Blur falls back to Opaque, and the result is what the UI must show as selected.
+BackdropMode effectiveBackdrop(BackdropMode requested);
+
+// Applies the resolved backdrop and reports whether the system is now painting one behind
+// `window`. The caller has to react to that: the backdrop is a rectangle the size of the
+// whole window, so a window that reserves a transparent margin for its own shadow must give
+// that margin up while a backdrop is in effect.
+bool applyWindowBackdrop(HWND window, BackdropMode mode);
+
+// True when the system rounds the window rectangle itself while a backdrop is painted, so
+// the window should draw its body rounded to match rather than square.
+bool backdropRoundsCorners();
 
 bool systemUsesLightTheme();
 D2D1_COLOR_F systemAccentColor();

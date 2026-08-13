@@ -49,6 +49,13 @@ constexpr std::array<std::pair<TrayStyle, char const*>, 3> kTrayStyleNames = {{
     {TrayStyle::Percentage, "percentage"},
 }};
 
+constexpr std::array<std::pair<BackdropMode, char const*>, 4> kBackdropNames = {{
+    {BackdropMode::Opaque, "opaque"},
+    {BackdropMode::Blur, "blur"},
+    {BackdropMode::Acrylic, "acrylic"},
+    {BackdropMode::Mica, "mica"},
+}};
+
 // Enumerations are stored by name rather than by ordinal so that the file stays readable
 // and so that reordering an enum cannot silently change a user's setting.
 template <class T, std::size_t N>
@@ -94,6 +101,8 @@ json::Value toJson(Settings const& settings) {
     root.set("theme", enumName(kThemeNames, settings.theme));
     root.set("language", enumName(kLanguageNames, settings.language));
     root.set("trayStyle", enumName(kTrayStyleNames, settings.trayStyle));
+    root.set("backdrop", enumName(kBackdropNames, settings.backdrop));
+    root.set("windowOpacity", static_cast<double>(settings.windowOpacity));
 
     root.set("masterVolume", static_cast<double>(settings.masterVolume));
 
@@ -261,6 +270,10 @@ Settings Settings::load(std::filesystem::path const& file) {
     settings.theme = parseEnum(kThemeNames, root["theme"], settings.theme);
     settings.language = parseEnum(kLanguageNames, root["language"], settings.language);
     settings.trayStyle = parseEnum(kTrayStyleNames, root["trayStyle"], settings.trayStyle);
+
+    settings.backdrop = parseEnum(kBackdropNames, root["backdrop"], settings.backdrop);
+    settings.windowOpacity = std::clamp(root["windowOpacity"].asFloat(settings.windowOpacity),
+                                        kMinimumWindowOpacity, 1.0f);
 
     settings.masterVolume =
         std::clamp(root["masterVolume"].asFloat(settings.masterVolume), 0.0f, 1.0f);

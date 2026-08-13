@@ -2,6 +2,7 @@
 
 Outputs:
     resources/app.ico          multi-resolution application icon
+    docs/images/icon.png       the 256 px frame of that icon, for the documentation
     resources/sounds/*.wav     the five built-in notification sounds
 
 The assets are committed, so this script only needs to run when a design changes.
@@ -22,13 +23,17 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parent.parent
 RESOURCES = ROOT / "resources"
 SOUNDS = RESOURCES / "sounds"
+DOCS_IMAGES = ROOT / "docs" / "images"
 
 SAMPLE_RATE = 48_000
 
-# Xbox green, lightened a little so the shape stays legible on dark backgrounds.
-GREEN_TOP = (26, 168, 26, 255)
-GREEN_BOTTOM = (11, 106, 11, 255)
-DETAIL = (255, 255, 255, 235)
+# A bright emerald, not the Xbox green this icon used to wear: the app reports the
+# charge of headphones, mice, pens and pads, so a console brand colour points at the
+# wrong thing. Emerald also survives both taskbars -- #107C10 sinks into a dark one.
+GREEN_TOP = (61, 220, 132, 255)
+GREEN_BOTTOM = (14, 150, 78, 255)
+
+ICON_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
 
 def _vertical_gradient(size, top, bottom):
@@ -39,106 +44,91 @@ def _vertical_gradient(size, top, bottom):
     return ramp.resize((size, size), Image.NEAREST)
 
 
-def _rotated_ellipse(size, cx, cy, w, h, angle):
-    """An ellipse rotated about its own centre, returned as a full-canvas mask."""
-    pad = int(max(w, h) * size)
-    layer = Image.new("L", (pad * 2, pad * 2), 0)
-    ImageDraw.Draw(layer).ellipse(
-        [pad - w * size / 2, pad - h * size / 2, pad + w * size / 2, pad + h * size / 2],
-        fill=255)
-    layer = layer.rotate(angle, resample=Image.BICUBIC, center=(pad, pad))
-    out = Image.new("L", (size, size), 0)
-    out.paste(layer, (int(cx * size) - pad, int(cy * size) - pad), layer)
-    return out
+def _rounded_rect(draw, box, radius):
+    """Fill a rounded rectangle over the half-open box [x0, x1) x [y0, y1).
 
-
-def _union(base, *masks):
-    for m in masks:
-        base.paste(255, (0, 0), m)
-    return base
-
-
-def _gamepad_masks(size, detail_level):
-    """Return (body, details) masks for an Xbox-shaped controller drawn at `size` px.
-
-    detail_level: 0 = silhouette only, 1 = sticks and d-pad, 2 = everything.
-    Small icons get a stubbier silhouette rather than a downscale of the large one --
-    the real proportions turn to mush below about 24 px.
+    Pillow's own rectangle includes its far edge, which would spill one supersampled
+    row past a snapped edge and leave a 12%-alpha sliver down the right of the 16 px
+    frame. It also rejects a box whose sub-pixel edges round the wrong way, so round
+    before handing it over.
     """
-    def px(*v):
-        return [x * size for x in v]
+    x0, y0, x1, y1 = (round(v) for v in box)
+    draw.rounded_rectangle([x0, y0, x1 - 1, y1 - 1], radius=round(radius), fill=255)
 
-    compact = detail_level == 0
-    body = Image.new("L", (size, size), 0)
+
+def _bolt(draw, size, cy, extent, waist, lean):
+    """A lightning bolt centred horizontally, as a polygon in unit coordinates."""
+    x, y = size / 2, cy * size
+    hw, hh = extent[0] * size / 2, extent[1] * size / 2
+    draw.polygon([
+        (x + hw * lean, y - hh),
+        (x - hw, y + hh * waist),
+        (x - hw * waist * 0.5, y + hh * waist),
+        (x - hw * lean, y + hh),
+        (x + hw, y - hh * waist),
+        (x + hw * waist * 0.5, y - hh * waist),
+    ], fill=255)
+
+
+def _cell_masks(size, ss, compact):
+    """Return (body, bolt) masks for the charge cell, drawn at `size * ss` px.
+
+    The straight edges are snapped to the *final* pixel grid before being supersampled.
+    Left to itself an edge such as 0.195 lands mid-pixel at 16 px and the whole mark
+    downsamples to a smudge; snapped, the silhouette comes out sharp.
+
+    compact: below 24 px the mark gets a wider body and a fatter, more upright bolt.
+    The large proportions leave a one-pixel wall beside the bolt at that scale, and a
+    one-pixel wall is what antialiasing eats first.
+    """
+    work = size * ss
+
+    def q(u):
+        return round(u * size) * ss
+
+    body = Image.new("L", (work, work), 0)
     d = ImageDraw.Draw(body)
-
     if compact:
-        d.rounded_rectangle(px(0.115, 0.280, 0.885, 0.665), radius=0.175 * size, fill=255)
-        grip_w, grip_h, grip_x, grip_y, grip_a = 0.330, 0.330, 0.212, 0.590, 15
-        dip_y, dip_r = 0.138, 0.155
-        notch_y, notch_r = 0.828, 0.248
+        _rounded_rect(d, [q(0.375), q(0.045), q(0.625), q(0.175)], 0.05 * work)
+        _rounded_rect(d, [q(0.1875), q(0.145), q(0.8125), q(0.955)], 0.155 * work)
     else:
-        # Shoulder bumpers sit behind and above the main slab.
-        d.rounded_rectangle(px(0.278, 0.190, 0.722, 0.325), radius=0.058 * size, fill=255)
-        d.rounded_rectangle(px(0.180, 0.252, 0.820, 0.640), radius=0.140 * size, fill=255)
-        grip_w, grip_h, grip_x, grip_y, grip_a = 0.318, 0.395, 0.226, 0.598, 20
-        dip_y, dip_r = 0.088, 0.132
-        notch_y, notch_r = 0.842, 0.218
+        _rounded_rect(d, [q(0.385), q(0.040), q(0.615), q(0.165)], 0.05 * work)
+        _rounded_rect(d, [q(0.205), q(0.140), q(0.795), q(0.955)], 0.170 * work)
 
-    _union(body,
-           _rotated_ellipse(size, grip_x, grip_y, grip_w, grip_h, -grip_a),
-           _rotated_ellipse(size, 1 - grip_x, grip_y, grip_w, grip_h, grip_a))
-
-    # The dip between the bumpers and the notch between the grips are what make the
-    # silhouette read as a controller rather than a blob.
-    cut = Image.new("L", (size, size), 0)
-    cd = ImageDraw.Draw(cut)
-    cd.ellipse(px(0.5 - dip_r, dip_y - dip_r, 0.5 + dip_r, dip_y + dip_r), fill=255)
-    cd.ellipse(px(0.5 - notch_r, notch_y - notch_r, 0.5 + notch_r, notch_y + notch_r), fill=255)
-    body.paste(0, (0, 0), cut)
-
-    details = Image.new("L", (size, size), 0)
-    if detail_level >= 1:
-        dd = ImageDraw.Draw(details)
-        # Xbox layout: left stick high-left, d-pad low-left, face buttons high-right,
-        # right stick low-centre-right.
-        for cx, cy in ((0.325, 0.398), (0.588, 0.548)):
-            dd.ellipse(px(cx - 0.068, cy - 0.068, cx + 0.068, cy + 0.068), fill=255)
-            dd.ellipse(px(cx - 0.036, cy - 0.036, cx + 0.036, cy + 0.036), fill=105)
-        cx, cy, arm, thick = 0.412, 0.548, 0.072, 0.026
-        dd.rounded_rectangle(px(cx - thick, cy - arm, cx + thick, cy + arm),
-                             radius=0.011 * size, fill=255)
-        dd.rounded_rectangle(px(cx - arm, cy - thick, cx + arm, cy + thick),
-                             radius=0.011 * size, fill=255)
-    if detail_level >= 2:
-        dd = ImageDraw.Draw(details)
-        br, bo = 0.031, 0.072
-        for ox, oy in ((0, -bo), (0, bo), (-bo, 0), (bo, 0)):
-            dd.ellipse(px(0.690 + ox - br, 0.395 + oy - br, 0.690 + ox + br, 0.395 + oy + br),
-                       fill=255)
-        dd.ellipse(px(0.5 - 0.038, 0.300 - 0.038, 0.5 + 0.038, 0.300 + 0.038), fill=255)
-
-    return body, details
+    bolt = Image.new("L", (work, work), 0)
+    if compact:
+        _bolt(ImageDraw.Draw(bolt), work, 0.55, (0.46, 0.66), waist=0.24, lean=0.06)
+    else:
+        _bolt(ImageDraw.Draw(bolt), work, 0.545, (0.40, 0.63), waist=0.23, lean=0.09)
+    return body, bolt
 
 
 def render_icon(size):
     ss = 8 if size <= 64 else 4          # supersample factor
     work = size * ss
-    detail_level = 2 if size >= 40 else (1 if size >= 24 else 0)
 
-    body, details = _gamepad_masks(work, detail_level)
+    body, bolt = _cell_masks(size, ss, compact=size < 24)
     img = Image.new("RGBA", (work, work), (0, 0, 0, 0))
     img.paste(_vertical_gradient(work, GREEN_TOP, GREEN_BOTTOM), (0, 0), body)
-    img.paste(Image.new("RGBA", (work, work), DETAIL), (0, 0), details)
-    return img.resize((size, size), Image.LANCZOS)
+    # The bolt is knocked out rather than painted white, so the mark is one solid colour
+    # and cannot half-vanish against a light taskbar.
+    img.paste((0, 0, 0, 0), (0, 0), bolt)
+    # BOX, not LANCZOS: with uniform supersampling this is an exact area average, so a
+    # grid-snapped edge stays a hard edge. Lanczos rings and leaves a pale halo down the
+    # side of the cell, which is exactly what ruins the 16 px frame.
+    return img.resize((size, size), Image.BOX)
 
 
 def build_icon():
-    sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256]
-    frames = [render_icon(s) for s in sizes]
+    frames = [render_icon(s) for s in ICON_SIZES]
     frames[-1].save(RESOURCES / "app.ico", format="ICO",
-                    sizes=[(s, s) for s in sizes], append_images=frames[:-1])
-    print("wrote {} ({})".format(RESOURCES / "app.ico", ", ".join(str(s) for s in sizes)))
+                    sizes=[(s, s) for s in ICON_SIZES], append_images=frames[:-1])
+    print("wrote {} ({})".format(RESOURCES / "app.ico",
+                                 ", ".join(str(s) for s in ICON_SIZES)))
+
+    DOCS_IMAGES.mkdir(parents=True, exist_ok=True)
+    frames[-1].save(DOCS_IMAGES / "icon.png")
+    print("wrote {} (256)".format(DOCS_IMAGES / "icon.png"))
 
 
 def _voice(freq, start, duration, gain, total, brightness=1.0):

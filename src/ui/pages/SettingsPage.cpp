@@ -1,6 +1,7 @@
 #include "ui/pages/SettingsPage.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <initializer_list>
 #include <format>
@@ -26,6 +27,20 @@ constexpr float kThresholdStep = 5.0f;
 constexpr float kLowMinimum = 10.0f;
 constexpr float kLowMaximum = 50.0f;
 constexpr float kCriticalMinimum = 5.0f;
+
+constexpr float kOpacityStep = 0.05f;
+
+// Where the opacity lands the first time a backdrop is chosen. A backdrop behind a fully
+// opaque window is invisible, and a control that appears to do nothing reads as broken.
+constexpr float kBackdropOpacity = 0.85f;
+
+// Listed worst-to-best, which is also the order they degrade in.
+constexpr std::array<std::pair<BackdropMode, Text>, 4> kBackdropModes = {{
+    {BackdropMode::Opaque, Text::BackdropOpaque},
+    {BackdropMode::Blur, Text::BackdropBlur},
+    {BackdropMode::Acrylic, Text::BackdropAcrylic},
+    {BackdropMode::Mica, Text::BackdropMica},
+}};
 
 // The stored value need not be one of the offered ones -- an older build or a hand-edited
 // file can hold anything -- so the nearest option is selected rather than the first.
@@ -59,6 +74,8 @@ std::wstring percentLabel(float value) {
     return std::format(L"{} {}", static_cast<int>(value + 0.5f), text(Text::UnitPercent));
 }
 
+std::wstring fractionLabel(float value) { return percentLabel(value * 100.0f); }
+
 template <class Labeller>
 std::vector<std::wstring> labelsFor(std::span<int const> options, Labeller labeller) {
     std::vector<std::wstring> labels;
@@ -85,6 +102,7 @@ SettingsPage::SettingsPage(PageContext context) : Page(std::move(context)) {}
 void SettingsPage::build(StackPanel& column) {
     m_low = nullptr;
     m_critical = nullptr;
+    m_opacity = nullptr;
 
     column.emplace<PageHeader>(std::wstring(text(Text::SettingsTitle)));
     addGeneral(column);
@@ -243,6 +261,62 @@ void SettingsPage::addAppearance(StackPanel& column) {
             next.trayStyle = static_cast<TrayStyle>(picked);
             m_context.applySettings(std::move(next));
         }));
+
+    addBackdrop(*group);
+}
+
+void SettingsPage::addBackdrop(SettingsGroup& group) {
+    Settings const& current = SettingsStore::instance().get();
+
+    // Only the modes this Windows can really paint go into the list. Offering the rest and
+    // quietly substituting something else would be a lie told in the one place the user
+    // goes to find out what their machine can do.
+    std::vector<BackdropMode> offered;
+    std::vector<std::wstring> labels;
+    for (auto const& [mode, label] : kBackdropModes) {
+        if (platform::backdropSupported(mode)) {
+            offered.push_back(mode);
+            labels.emplace_back(text(label));
+        }
+    }
+
+    // What is in effect, not what is stored: a file carrying Mica opened on Windows 10 has
+    // to show the blur it actually got.
+    BackdropMode const active = platform::effectiveBackdrop(current.backdrop);
+    int selected = 0;
+    for (std::size_t i = 0; i < offered.size(); ++i) {
+        if (offered[i] == active) {
+            selected = static_cast<int>(i);
+        }
+    }
+
+    auto* card = group.addCard(glyph::kMaximise, std::wstring(text(Text::BackdropLabel)));
+    card->setDescription(std::wstring(text(Text::BackdropDesc)));
+    card->setControl(std::make_unique<ComboBox>(
+        std::move(labels), selected, [this, offered](int picked) {
+            Settings next = SettingsStore::instance().get();
+            next.backdrop = offered[static_cast<std::size_t>(picked)];
+            // A backdrop behind an opaque window shows nothing at all, so the first one
+            // chosen takes the opacity off its ceiling and moves the slider with it -- the
+            // same push the two threshold sliders give each other.
+            if (next.backdrop != BackdropMode::Opaque && next.windowOpacity >= 1.0f) {
+                next.windowOpacity = kBackdropOpacity;
+                m_opacity->setValue(kBackdropOpacity);
+            }
+            m_context.applySettings(std::move(next));
+        }));
+
+    auto* opacityCard = group.addCard(glyph::kRestore, std::wstring(text(Text::WindowOpacity)));
+    opacityCard->setDescription(std::wstring(text(Text::WindowOpacityDesc)));
+    auto slider = std::make_unique<Slider>(kMinimumWindowOpacity, 1.0f, current.windowOpacity,
+                                           [this](float value) {
+                                               Settings next = SettingsStore::instance().get();
+                                               next.windowOpacity = value;
+                                               m_context.applySettings(std::move(next));
+                                           });
+    slider->setStep(kOpacityStep);
+    slider->setFormatter(fractionLabel);
+    m_opacity = static_cast<Slider*>(opacityCard->setControl(std::move(slider)));
 }
 
 void SettingsPage::addHistory(StackPanel& column) {

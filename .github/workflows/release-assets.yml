@@ -1,6 +1,7 @@
 name: Release assets
 
-# Builds the executable and attaches it to a published release.
+# Builds PowerPeek and attaches both release assets -- the installer and the portable zip
+# -- to a published release.
 #
 # Read this before changing the triggers. A tag pushed by release-please carries the
 # default GITHUB_TOKEN, and GitHub deliberately does not start new workflow runs from
@@ -54,14 +55,34 @@ jobs:
           "%PP_CMAKE%" --preset release -DCMAKE_MAKE_PROGRAM="%PP_NINJA%" || exit /b 1
           "%PP_CMAKE%" --build --preset release || exit /b 1
 
-      - name: Package
+      # The asset names come from version.txt -- the same file the installer and the compiled
+      # VERSIONINFO read -- and release-please derives the tag from it too. A tag that
+      # disagrees means the release was cut by hand from the wrong commit, and would publish
+      # a v1.2.0 release full of 1.1.0 files.
+      - name: Check the tag against version.txt
         shell: pwsh
         run: |
-          $name = "PowerPeek-$env:TAG-x64.exe"
-          New-Item -ItemType Directory -Path dist | Out-Null
-          Copy-Item build\release\PowerPeek.exe "dist\$name"
-          $hash = (Get-FileHash "dist\$name" -Algorithm SHA256).Hash.ToLower()
-          Set-Content "dist\$name.sha256" "$hash *$name"
+          $version = (Get-Content version.txt -Raw).Trim()
+          if ($env:TAG -ne "v$version") {
+              throw "The release is tagged $env:TAG, but version.txt says $version."
+          }
+
+      # See the comment on the same step in ci.yml: windows-latest ships Inno Setup 6.7.1,
+      # and this only has to do something if a future image revision drops it.
+      - name: Ensure Inno Setup
+        shell: pwsh
+        run: |
+          if (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") {
+              Write-Host "Inno Setup is on the image."
+          } else {
+              choco install innosetup --version=6.7.1 --no-progress --yes
+          }
+
+      # Produces dist\PowerPeek-Setup-<version>.exe, dist\PowerPeek-<version>-portable.zip
+      # and a SHA-256 sidecar for each. Every file in dist is attached below.
+      - name: Package
+        shell: cmd
+        run: call tools\package.bat || exit /b 1
 
       # --clobber keeps this idempotent, so a manual re-run after a failed build replaces
       # the assets instead of failing on the ones that did upload.

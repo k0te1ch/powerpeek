@@ -59,3 +59,6 @@ AGENTS.md
 .mcp.json
 .aislop/
 AISLOP.md
+
+# Python bytecode from the asset tooling
+__pycache__/

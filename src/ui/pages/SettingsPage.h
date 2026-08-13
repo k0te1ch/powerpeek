@@ -18,12 +18,16 @@ private:
     void addMonitoring(StackPanel& column);
     void addThresholds(SettingsGroup& group);
     void addAppearance(StackPanel& column);
+    void addBackdrop(SettingsGroup& group);
     void addHistory(StackPanel& column);
 
     // The two threshold sliders police each other: critical has to stay below low, and either
     // one being dragged past the other pushes it rather than being silently clamped later.
     Slider* m_low = nullptr;
     Slider* m_critical = nullptr;
+
+    // Choosing a backdrop pushes this one off its ceiling, for the same reason.
+    Slider* m_opacity = nullptr;
 };
 
 }  // namespace peek::ui

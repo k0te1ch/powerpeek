@@ -14,6 +14,8 @@ namespace peek::ui {
 namespace {
 
 constexpr wchar_t kRepositoryUrl[] = L"https://github.com/k0te1ch/powerpeek";
+constexpr wchar_t kAuthorUrl[] = L"https://github.com/k0te1ch";
+constexpr wchar_t kSupportUrl[] = L"https://boosty.to/k0te1ch";
 
 // ShellExecute returns a fake HINSTANCE whose value below 32 is the error code.
 void openWithShell(std::wstring const& target, HWND owner) {
@@ -45,6 +47,12 @@ void AboutPage::build(StackPanel& column) {
     auto* repository =
         group->addCard(glyph::kChevronRight, std::wstring(text(Text::OpenSourceRepository)));
     repository->setOnClick([owner] { openWithShell(kRepositoryUrl, owner); });
+
+    auto* author = group->addCard(glyph::kContact, std::wstring(text(Text::AboutAuthor)));
+    author->setOnClick([owner] { openWithShell(kAuthorUrl, owner); });
+
+    auto* support = group->addCard(glyph::kHeart, std::wstring(text(Text::SupportAuthor)));
+    support->setOnClick([owner] { openWithShell(kSupportUrl, owner); });
 }
 
 }  // namespace peek::ui

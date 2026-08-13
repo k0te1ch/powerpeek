@@ -40,6 +40,31 @@ enum class LanguagePreference {
     Russian,
 };
 
+// What the system paints behind the window.
+//
+// Anything other than Opaque hands the window frame to the compositor, which draws its
+// material across the whole window rectangle. The window gives up its own shadow margin in
+// return; see ui::D2DWindow::setBackdrop for why the two cannot coexist.
+//
+// Not every mode exists on every Windows build. platform::effectiveBackdrop resolves a
+// requested mode against the running system, and the settings page offers only what that
+// system can actually do.
+enum class BackdropMode {
+    Opaque,
+    Blur,
+    Acrylic,
+    Mica,
+};
+
+// The lowest alpha the window background may be painted at.
+//
+// This is a contrast floor, not a matter of taste. The title bar caption and the navigation
+// labels sit directly on the window background, and the worst case is white body text in
+// dark theme over a white desktop: at 0.7 the composite reads #636363 and the contrast ratio
+// against white is about 6:1, comfortably past the 4.5:1 the text has to clear. At 0.5 the
+// same case falls to about 3:1 and the labels start to disappear into the wallpaper.
+inline constexpr float kMinimumWindowOpacity = 0.7f;
+
 // How the notification-area icon renders the level.
 enum class TrayStyle {
     // A battery outline whose fill tracks the level.
@@ -85,6 +110,12 @@ struct Settings {
     ThemePreference theme = ThemePreference::System;
     LanguagePreference language = LanguagePreference::System;
     TrayStyle trayStyle = TrayStyle::Battery;
+
+    BackdropMode backdrop = BackdropMode::Opaque;
+    // Alpha of the window's own background layer, in [kMinimumWindowOpacity, 1]. Fully
+    // opaque by default: the backdrop is opt-in and nothing about the shipped window
+    // changes until it is chosen.
+    float windowOpacity = 1.0f;
 
     // Scales every notification sound; the per-event volume multiplies into this.
     float masterVolume = 0.8f;

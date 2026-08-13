@@ -132,6 +132,8 @@ inline constexpr wchar_t kWarning[] = L"\uE7BA";
 inline constexpr wchar_t kCharging[] = L"\uE945";
 inline constexpr wchar_t kCompleted[] = L"\uE930";
 inline constexpr wchar_t kBatteryUnknown[] = L"\uE996";
+inline constexpr wchar_t kContact[] = L"\uE77B";
+inline constexpr wchar_t kHeart[] = L"\uEB51";
 }  // namespace glyph
 
 // Resolves the effective theme from the user's preference and the system setting, owns

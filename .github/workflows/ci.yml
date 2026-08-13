@@ -59,3 +59,29 @@ jobs:
             build/release/PowerPeek.exe
             build/release/PowerPeek.pdb
           if-no-files-found: error
+
+      # windows-latest ships Inno Setup -- the runner image manifest lists "InnoSetup 6.7.1"
+      # under Tools -- so this finds it and does nothing. The image is not pinned and drops
+      # tools between revisions without warning, hence the fallback: the same version from
+      # Chocolatey, which is preinstalled on the runner and needs no secrets.
+      - name: Ensure Inno Setup
+        shell: pwsh
+        run: |
+          if (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") {
+              Write-Host "Inno Setup is on the image."
+          } else {
+              choco install innosetup --version=6.7.1 --no-progress --yes
+          }
+
+      # The same script the release build runs, so a broken installer script fails here, on
+      # the pull request, rather than on a release nobody can undo.
+      - name: Package the installer and the portable zip
+        shell: cmd
+        run: call tools\package.bat || exit /b 1
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: PowerPeek-packages
+          path: dist/*
+          if-no-files-found: error

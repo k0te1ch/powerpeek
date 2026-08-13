@@ -26,9 +26,9 @@ jobs:
   # Called rather than left to release-assets.yml's own `release` trigger: the release
   # was just published with the default GITHUB_TOKEN, and events raised by that token do
   # not start new workflow runs. Reaching the build from inside this run is what makes
-  # the binary actually appear on the release.
+  # the downloads actually appear on the release.
   assets:
-    name: Attach the executable
+    name: Attach the release assets
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
     permissions:
