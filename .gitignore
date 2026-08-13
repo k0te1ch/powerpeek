@@ -1,0 +1,61 @@
+# Build output
+/build/
+/out/
+/dist/
+/cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CMakeUserPresets.json
+*.ninja
+.ninja_log
+.ninja_deps
+build.ninja
+
+# MSVC / Visual Studio
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.*
+*.user
+*.suo
+*.aps
+*.pdb
+*.ilk
+*.idb
+*.obj
+*.exp
+*.lib
+*.exe
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# Application runtime data (never commit personal data)
+/run/
+settings.json
+history.jsonl
+
+# AI assistant artifacts — do not commit
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.planning/
+.cursor/
+.cursorrules
+.cursorignore
+.aider*
+.windsurf/
+.continue/
+.github/copilot-instructions.md
+.codeium/
+.gemini/
+.roo/
+.clinerules
+GEMINI.md
+AGENTS.md
+.mcp.json
+.aislop/
+AISLOP.md

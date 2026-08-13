@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (x64, RelWithDebInfo)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No toolchain to install. The windows-latest image ships Visual Studio 2022
+      # Enterprise with the "Desktop development with C++" workload
+      # (Microsoft.VisualStudio.Component.VC.Tools.x86.x64), the Windows 11 SDK
+      # 10.0.26100.0, CMake 3.31 and Ninja 1.13 -- everything this project needs.
+      #
+      # vsenv.bat is the same script a local build uses: it locates Visual Studio with
+      # vswhere and prefers the CMake and Ninja bundled with it, so CI and a developer
+      # machine run an identical toolchain discovery instead of two that drift apart.
+      # It must be CALLed, and the shell must be cmd, because it works by leaving the
+      # vcvars64 environment behind for the following lines.
+      - name: Build
+        shell: cmd
+        run: |
+          call tools\vsenv.bat || exit /b 1
+          "%PP_CMAKE%" --preset release -DCMAKE_MAKE_PROGRAM="%PP_NINJA%" -DPP_WARNINGS_AS_ERRORS=ON || exit /b 1
+          "%PP_CMAKE%" --build --preset release || exit /b 1
+
+      # The version in the binary's file properties comes from version.txt through a
+      # generated header and rc.exe. That is several steps of indirection, and a break in
+      # it is invisible until someone right-clicks the executable, so assert it here.
+      - name: Verify the version resource
+        shell: pwsh
+        run: |
+          $expected = (Get-Content version.txt -Raw).Trim()
+          $actual = (Get-Item build\release\PowerPeek.exe).VersionInfo.FileVersion
+          if ($actual -ne "$expected.0") {
+              throw "version.txt says $expected, but the executable reports $actual."
+          }
+          Write-Host "Version resource: $actual"
+
+      - name: Upload the executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: PowerPeek-x64
+          path: |
+            build/release/PowerPeek.exe
+            build/release/PowerPeek.pdb
+          if-no-files-found: error

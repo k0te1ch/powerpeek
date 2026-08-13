@@ -1,0 +1,74 @@
+name: Release assets
+
+# Builds the executable and attaches it to a published release.
+#
+# Read this before changing the triggers. A tag pushed by release-please carries the
+# default GITHUB_TOKEN, and GitHub deliberately does not start new workflow runs from
+# anything that token does. So `on: push: tags:` here would never fire -- no error, no
+# skipped run, just silence and a release with no binary on it. The `release` trigger has
+# the same blind spot for release-please's own releases, which is why release-please.yml
+# calls this workflow directly (workflow_call) the moment it publishes one.
+#
+# The `release` trigger below therefore covers the other case: a release published by
+# hand from the GitHub UI. workflow_dispatch is the manual retry when a build failed and
+# the release already exists.
+on:
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag of the release to attach the executable to.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag of the release to attach the executable to.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  attach:
+    name: Build and attach
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
+
+      # Same toolchain discovery as ci.yml; see the comment there. Warnings are not
+      # errors on this path: the commit being released has already passed CI, and a
+      # warning introduced by a newer toolset on the runner image should not be able to
+      # leave a published release with no binary attached to it.
+      - name: Build
+        shell: cmd
+        run: |
+          call tools\vsenv.bat || exit /b 1
+          "%PP_CMAKE%" --preset release -DCMAKE_MAKE_PROGRAM="%PP_NINJA%" || exit /b 1
+          "%PP_CMAKE%" --build --preset release || exit /b 1
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "PowerPeek-$env:TAG-x64.exe"
+          New-Item -ItemType Directory -Path dist | Out-Null
+          Copy-Item build\release\PowerPeek.exe "dist\$name"
+          $hash = (Get-FileHash "dist\$name" -Algorithm SHA256).Hash.ToLower()
+          Set-Content "dist\$name.sha256" "$hash *$name"
+
+      # --clobber keeps this idempotent, so a manual re-run after a failed build replaces
+      # the assets instead of failing on the ones that did upload.
+      - name: Attach to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $assets = Get-ChildItem dist -File | ForEach-Object FullName
+          gh release upload $env:TAG $assets --clobber

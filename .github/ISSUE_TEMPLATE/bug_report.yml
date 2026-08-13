@@ -1,0 +1,47 @@
+name: Bug report
+description: Something behaves differently from what it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: input
+    id: controller
+    attributes:
+      label: Controller
+      description: Model, and how it is connected.
+      placeholder: Xbox Series controller over Bluetooth
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: winver reports this, e.g. "Windows 11 23H2 (22631.3447)".
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown on the About page.
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: >
+        The relevant part of %LOCALAPPDATA%\PowerPeek\PowerPeek.log.
+        It holds device names and battery readings, nothing personal — but do skim it before pasting.
+      render: text
+    validations:
+      required: false

@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+# cmd.exe misparses a batch file with LF-only line endings in ways that look like a missing
+# executable rather than a syntax error, so these must arrive as CRLF on every checkout.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Inno Setup reads its script as CRLF.
+*.iss text eol=crlf
+
+*.ico binary
+*.png binary
+*.wav binary
+*.exe binary

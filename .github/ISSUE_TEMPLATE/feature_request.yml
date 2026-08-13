@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest something the app should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: >
+        Describe the situation, not the solution. Knowing what you were trying to achieve often leads
+        somewhere better than the feature as first imagined.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: How you would like it to work.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Please confirm
+      options:
+        - label: This does not require a new external dependency, or I have explained why it is worth one.
+          required: false
+        - label: This does not require network access, telemetry or an account.
+          required: true
