@@ -438,7 +438,24 @@ D2D1_COLOR_F Theme::levelColor(int percent) const {
     if (percent <= settings.lowThresholdPercent) {
         return palette.caution;
     }
-    return palette.success;
+    // A healthy level takes the user's accent rather than a fixed green. Green reads as a brand
+    // colour the application does not have, and it fights whatever accent the desktop is using;
+    // caution and critical stay fixed because those two carry meaning, not decoration.
+    return palette.accent;
+}
+
+D2D1_COLOR_F Theme::trayLevelColor(int percent, bool darkTaskbar) const {
+    auto const& settings = SettingsStore::instance().get();
+    if (percent >= 0 && percent <= settings.criticalThresholdPercent) {
+        return m_impl->palette.critical;
+    }
+    if (percent >= 0 && percent <= settings.lowThresholdPercent) {
+        return m_impl->palette.caution;
+    }
+    // The notification area is the one place the accent cannot be trusted: the taskbar may be
+    // tinted with that very accent, and a mark the colour of its own background disappears.
+    // A healthy level is therefore drawn in whatever contrasts with the taskbar.
+    return darkTaskbar ? D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.9f) : D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.9f);
 }
 
 IDWriteTextFormat* Theme::textFormat(TypeStyle style) const {

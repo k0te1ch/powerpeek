@@ -156,9 +156,14 @@ public:
     // to +3 (lightest), 0 being the accent itself.
     D2D1_COLOR_F accentShade(int step) const;
 
-    // The colour a battery level should be drawn in: success, caution or critical,
-    // according to the configured thresholds.
+    // The colour a battery level should be drawn in, according to the configured thresholds:
+    // caution and critical when it is low, the system accent when it is healthy.
     D2D1_COLOR_F levelColor(int percent) const;
+
+    // The same decision for the notification area, where the accent cannot be used: the taskbar
+    // is often tinted with it, and a mark the colour of its background is invisible. A healthy
+    // level is drawn in whatever contrasts with the taskbar instead.
+    D2D1_COLOR_F trayLevelColor(int percent, bool darkTaskbar) const;
 
     IDWriteTextFormat* textFormat(TypeStyle style) const;
 

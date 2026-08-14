@@ -414,7 +414,7 @@ bool TrayIcon::Impl::refreshIcon(std::vector<ControllerInfo> const& controllers,
     visual.gauge.fill = fill;
     visual.gauge.charging = charging;
     visual.gauge.approximate = approximate;
-    visual.gauge.level = theme().levelColor(percent);
+    visual.gauge.level = theme().trayLevelColor(percent, dark);
     visual.connected = connected;
     visual.badge = badge;
 

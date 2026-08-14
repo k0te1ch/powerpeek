@@ -722,21 +722,27 @@ void drawBatteryGauge(Canvas& canvas, D2D1_RECT_F bounds, GaugeVisual const& vis
     float const nub = std::max(canvas.pixel(), width(bounds) * 0.075f);
     float const stroke = std::max(canvas.pixel(), height(bounds) * 0.07f);
 
+    // Snapped up front, because every rectangle below is derived from this one. At tray sizes a
+    // half-pixel offset spreads a one-pixel edge across two rows, which reads as blur rather than
+    // as a thin line; strokeRounded aligns its own stroke but the fills have no such chance.
     D2D1_RECT_F const body =
-        D2D1::RectF(bounds.left, bounds.top, bounds.right - nub - stroke, bounds.bottom);
+        D2D1::RectF(canvas.snap(bounds.left), canvas.snap(bounds.top),
+                    canvas.snap(bounds.right - nub - stroke), canvas.snap(bounds.bottom));
     float const radius = std::min(height(body) * 0.28f, width(body) * 0.2f);
 
     strokeRounded(canvas, body, radius, visual.outline, stroke);
 
     // The nub is a small rounded cap on the positive terminal, vertically centred.
-    float const nubHeight = height(body) * 0.38f;
-    float const nubTop = body.top + (height(body) - nubHeight) * 0.5f;
+    float const nubHeight = canvas.snap(height(body) * 0.38f);
+    float const nubTop = canvas.snap(body.top + (height(body) - nubHeight) * 0.5f);
     fillRounded(canvas,
-                D2D1::RectF(body.right + stroke * 0.5f, nubTop, bounds.right, nubTop + nubHeight),
+                D2D1::RectF(canvas.snap(body.right + stroke * 0.5f), nubTop,
+                            canvas.snap(bounds.right), nubTop + nubHeight),
                 nub * 0.5f, visual.outline);
 
-    D2D1_RECT_F const well = D2D1::RectF(body.left + stroke * 1.5f, body.top + stroke * 1.5f,
-                                         body.right - stroke * 1.5f, body.bottom - stroke * 1.5f);
+    D2D1_RECT_F const well = D2D1::RectF(
+        canvas.snap(body.left + stroke * 1.5f), canvas.snap(body.top + stroke * 1.5f),
+        canvas.snap(body.right - stroke * 1.5f), canvas.snap(body.bottom - stroke * 1.5f));
     if (width(well) <= 0.0f || height(well) <= 0.0f) {
         return;
     }
@@ -1165,6 +1171,31 @@ void drawTrayUnknownLevel(Canvas& canvas, D2D1_RECT_F bounds, D2D1_COLOR_F color
 
 }  // namespace
 
+namespace {
+
+// The gauge's own number, drawn the way the count badge already is.
+//
+// The shared drawText uses DirectWrite's natural metrics, which is right everywhere the text is
+// 12 dip or larger. At the eight or nine pixels a tray icon leaves, an unhinted digit spreads its
+// stems across grey rows and the number stops being readable at all; gridfitting puts them back on
+// whole pixels. Local to the tray rather than a flag on drawText, because nothing else wants it.
+void drawTrayNumber(Canvas& canvas,
+                    std::wstring_view number,
+                    IDWriteTextFormat* format,
+                    D2D1_RECT_F rect,
+                    D2D1_COLOR_F color) {
+    auto* brush = canvas.brush(color);
+    if (!format || !brush) {
+        return;
+    }
+    format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    canvas.target().DrawText(number.data(), static_cast<UINT32>(number.size()), format, rect, brush,
+                             D2D1_DRAW_TEXT_OPTIONS_NONE, DWRITE_MEASURING_MODE_GDI_CLASSIC);
+}
+
+}  // namespace
+
 HICON renderTrayIcon(SIZE pixelSize, TrayStyle style, TrayVisual const& visual, bool dark) {
     GaugeVisual local = visual.gauge;
     // The notification area follows the system theme, which the user can set independently of
@@ -1208,16 +1239,18 @@ HICON renderTrayIcon(SIZE pixelSize, TrayStyle style, TrayVisual const& visual, 
             case TrayStyle::Percentage: {
                 std::wstring const number = unknown ? L"?" : std::to_wstring(local.percent);
                 float const fontSize = width(content) * (number.size() > 2 ? 0.5f : 0.62f);
-                drawText(canvas, number, numberFormat(fontSize), content,
-                         unknown ? local.text : local.level, Align::Center, Align::Center);
+                drawTrayNumber(canvas, number, numberFormat(fontSize, DWRITE_FONT_WEIGHT_BOLD),
+                               content, unknown ? local.text : local.level);
                 break;
             }
             case TrayStyle::Battery: {
                 // A 16-pixel battery is only legible lying down, with a margin the shell's own
-                // icons leave too.
-                float const inset = std::max(1.0f, height(content) * 0.12f);
-                D2D1_RECT_F const box = D2D1::RectF(content.left + 0.5f, content.top + inset,
-                                                    content.right - 0.5f, content.bottom - inset);
+                // icons leave too -- but a whole-pixel one, and a small one: the mark competes
+                // with hand-hinted system glyphs beside it and loses every row it gives away.
+                float const inset = std::round(std::max(1.0f, height(content) * 0.08f));
+                D2D1_RECT_F const box =
+                    D2D1::RectF(std::round(content.left), std::round(content.top) + inset,
+                                std::round(content.right), std::round(content.bottom) - inset);
                 drawBatteryGauge(canvas, box, local);
                 if (unknown) {
                     // Centred on the well, which stops short of the nub on the right.
