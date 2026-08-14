@@ -49,8 +49,8 @@ no network code.
 | Sounds | History |
 |:---:|:---:|
 | <img src="docs/images/sounds.png" width="380" alt="Per-event sound settings"> | <img src="docs/images/history.png" width="380" alt="Battery history chart"> |
-| **Settings** | **Light theme** |
-| <img src="docs/images/settings.png" width="380" alt="Settings page"> | <img src="docs/images/light.png" width="380" alt="The app in light theme"> |
+| **Settings** | **About** |
+| <img src="docs/images/settings.png" width="380" alt="Settings page"> | <img src="docs/images/about.png" width="380" alt="The About page"> |
 
 </div>
 

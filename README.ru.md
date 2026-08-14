@@ -48,8 +48,8 @@ Windows знает заряд геймпада. Просто не показыв
 | Звуки | История |
 |:---:|:---:|
 | <img src="docs/images/sounds.png" width="380" alt="Настройки звука для каждого события"> | <img src="docs/images/history.png" width="380" alt="График истории заряда"> |
-| **Параметры** | **Светлая тема** |
-| <img src="docs/images/settings.png" width="380" alt="Страница параметров"> | <img src="docs/images/light.png" width="380" alt="Приложение в светлой теме"> |
+| **Параметры** | **О программе** |
+| <img src="docs/images/settings.png" width="380" alt="Страница параметров"> | <img src="docs/images/about.png" width="380" alt="Страница «О программе»"> |
 
 </div>
 

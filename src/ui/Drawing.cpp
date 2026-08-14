@@ -735,9 +735,12 @@ void drawBatteryGauge(Canvas& canvas, D2D1_RECT_F bounds, GaugeVisual const& vis
     // The nub is a small rounded cap on the positive terminal, vertically centred.
     float const nubHeight = canvas.snap(height(body) * 0.38f);
     float const nubTop = canvas.snap(body.top + (height(body) - nubHeight) * 0.5f);
+    // Butted against the body, not offset from it: strokeRounded insets its stroke by half a
+    // pixel, so starting the nub half a stroke further right leaves a visible gap and the
+    // terminal reads as a detached tick rather than as part of the battery.
     fillRounded(canvas,
-                D2D1::RectF(canvas.snap(body.right + stroke * 0.5f), nubTop,
-                            canvas.snap(bounds.right), nubTop + nubHeight),
+                D2D1::RectF(canvas.snap(body.right), nubTop, canvas.snap(bounds.right),
+                            nubTop + nubHeight),
                 nub * 0.5f, visual.outline);
 
     D2D1_RECT_F const well = D2D1::RectF(
@@ -1173,6 +1176,67 @@ void drawTrayUnknownLevel(Canvas& canvas, D2D1_RECT_F bounds, D2D1_COLOR_F color
 
 namespace {
 
+// A tray battery with no outline at all.
+//
+// The outlined gauge the cards use falls apart at 16 px: a one-pixel stroke, a one-pixel gap and
+// the fill make three bands where the shell's own glyphs have one solid shape, and the eye reads
+// that as noise rather than as a battery. Here the silhouette is drawn once in the dim colour and
+// the charged part painted over it, so every edge belongs to the shape itself.
+void drawTraySolidBattery(Canvas& canvas, D2D1_RECT_F bounds, GaugeVisual const& visual) {
+    float const nub = std::max(canvas.snap(width(bounds) * 0.09f), canvas.pixel());
+    D2D1_RECT_F const body =
+        D2D1::RectF(canvas.snap(bounds.left), canvas.snap(bounds.top),
+                    canvas.snap(bounds.right - nub), canvas.snap(bounds.bottom));
+    if (width(body) <= 0.0f || height(body) <= 0.0f) {
+        return;
+    }
+    float const radius = std::min(height(body) * 0.30f, width(body) * 0.22f);
+
+    float const capHeight = std::max(canvas.snap(height(body) * 0.42f), canvas.pixel());
+    float const capTop = canvas.snap(body.top + (height(body) - capHeight) * 0.5f);
+    // One pixel of daylight between body and terminal. Butted together they are the same colour
+    // at a full charge and merge into a single blob with a bump; separated, the terminal reads
+    // even when both are bright.
+    D2D1_RECT_F const cap = D2D1::RectF(body.right + canvas.pixel(), capTop,
+                                        canvas.snap(bounds.right), capTop + capHeight);
+
+    fillRounded(canvas, body, radius, visual.track);
+    // The terminal takes the bright colour rather than the dim one. It is what distinguishes a
+    // battery from a rounded rectangle, and at 16 px a dim nub beside a full body simply is not
+    // seen -- the mark then reads as a plain box whatever the charge.
+    fillRounded(canvas, cap, std::min(width(cap), height(cap)) * 0.3f, visual.level);
+
+    float const fraction = std::clamp(visual.fill, 0.0f, 1.0f);
+    if (visual.percent >= 0 && fraction > 0.0f) {
+        // Clipped rather than drawn as its own rounded rectangle, so the charged part keeps the
+        // body's rounded left end and squares off only where the charge actually stops.
+        D2D1_RECT_F const clip = D2D1::RectF(body.left, body.top,
+                                             canvas.snap(body.left + width(body) * fraction),
+                                             body.bottom);
+        canvas.target().PushAxisAlignedClip(clip, D2D1_ANTIALIAS_MODE_ALIASED);
+        fillRounded(canvas, body, radius, visual.level);
+        canvas.target().PopAxisAlignedClip();
+    }
+
+    if (visual.charging) {
+        float const boltHeight = height(body) * 1.15f;
+        auto const box = D2D1::RectF((body.left + body.right) * 0.5f - boltHeight * 0.31f,
+                                     (body.top + body.bottom) * 0.5f - boltHeight * 0.5f,
+                                     (body.left + body.right) * 0.5f + boltHeight * 0.31f,
+                                     (body.top + body.bottom) * 0.5f + boltHeight * 0.5f);
+        if (auto bolt = boltGeometry(canvas, box)) {
+            // Knocked out of whatever it crosses, so it stays visible over the charged part and
+            // the empty part alike.
+            if (auto* cut = canvas.brush(visual.surface)) {
+                canvas.target().DrawGeometry(bolt.get(), cut, std::max(canvas.pixel() * 2.0f, 2.0f));
+            }
+            if (auto* fill = canvas.brush(visual.level)) {
+                canvas.target().FillGeometry(bolt.get(), fill);
+            }
+        }
+    }
+}
+
 // The gauge's own number, drawn the way the count badge already is.
 //
 // The shared drawText uses DirectWrite's natural metrics, which is right everywhere the text is
@@ -1202,7 +1266,10 @@ HICON renderTrayIcon(SIZE pixelSize, TrayStyle style, TrayVisual const& visual, 
     // the application's, so these come from the caller's flag and not from the palette.
     local.outline = dark ? D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.9f) : D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.9f);
     local.text = local.outline;
-    local.track = dark ? D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.16f) : D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.16f);
+    // Strong enough to be a silhouette in its own right, not the hairline tint an outlined gauge
+    // wanted: with no stroke around it this is the only thing that gives the battery its shape
+    // when the charge is low.
+    local.track = dark ? D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.38f) : D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.34f);
     local.surface = dark ? D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f) : D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);
 
     return renderToIcon(pixelSize, [&](Canvas& canvas, D2D1_SIZE_F size) {
@@ -1244,14 +1311,17 @@ HICON renderTrayIcon(SIZE pixelSize, TrayStyle style, TrayVisual const& visual, 
                 break;
             }
             case TrayStyle::Battery: {
-                // A 16-pixel battery is only legible lying down, with a margin the shell's own
-                // icons leave too -- but a whole-pixel one, and a small one: the mark competes
-                // with hand-hinted system glyphs beside it and loses every row it gives away.
-                float const inset = std::round(std::max(1.0f, height(content) * 0.08f));
+                // A battery is legible because it is wider than it is tall. Left with a small
+                // margin the body comes out very nearly square in a square icon, and then it
+                // reads as a rounded box with a tick beside it rather than as a battery at all.
+                // Roughly five to eight is what the shell's own battery glyph uses; the whole
+                // pixel matters as much as the ratio, because a fractional edge spreads a
+                // one-pixel stroke over two rows and turns into blur.
+                float const inset = std::round(std::max(1.0f, height(content) * 0.19f));
                 D2D1_RECT_F const box =
                     D2D1::RectF(std::round(content.left), std::round(content.top) + inset,
                                 std::round(content.right), std::round(content.bottom) - inset);
-                drawBatteryGauge(canvas, box, local);
+                drawTraySolidBattery(canvas, box, local);
                 if (unknown) {
                     // Centred on the well, which stops short of the nub on the right.
                     drawTrayUnknownLevel(canvas,
