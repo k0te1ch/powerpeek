@@ -123,6 +123,13 @@ constexpr Entry kTable[] = {
     {Text::TrayStyleBattery, L"Battery", L"Батарея"},
     {Text::TrayStyleRing, L"Ring", L"Кольцо"},
     {Text::TrayStylePercentage, L"Percentage", L"Проценты"},
+    {Text::TrayColorLabel, L"Tray icon colour", L"Цвет значка"},
+    {Text::TrayColorAuto, L"Automatic", L"Автоматически"},
+    {Text::TrayColorAccent, L"System accent", L"Акцент системы"},
+    {Text::TrayColorWhite, L"White", L"Белый"},
+    {Text::TrayColorGreen, L"Green", L"Зелёный"},
+    {Text::TrayColorBlue, L"Blue", L"Синий"},
+    {Text::TrayColorPink, L"Pink", L"Розовый"},
     {Text::BackdropLabel, L"Window backdrop", L"Фон окна"},
     {Text::BackdropDesc, L"What shows through behind the window. Only what this system can "
                          L"actually draw is offered.",

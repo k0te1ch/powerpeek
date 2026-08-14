@@ -1183,10 +1183,14 @@ namespace {
 // that as noise rather than as a battery. Here the silhouette is drawn once in the dim colour and
 // the charged part painted over it, so every edge belongs to the shape itself.
 void drawTraySolidBattery(Canvas& canvas, D2D1_RECT_F bounds, GaugeVisual const& visual) {
-    float const nub = std::max(canvas.snap(width(bounds) * 0.09f), canvas.pixel());
+    // The terminal needs a zone of its own: a gap of one pixel and at least two more for the
+    // cap. Sizing the nub alone and then subtracting a gap from it leaves nothing to draw at
+    // 16 px, where the whole nub is one pixel wide to begin with.
+    float const gap = canvas.pixel();
+    float const terminal = std::max(canvas.snap(width(bounds) * 0.16f), gap * 3.0f);
     D2D1_RECT_F const body =
         D2D1::RectF(canvas.snap(bounds.left), canvas.snap(bounds.top),
-                    canvas.snap(bounds.right - nub), canvas.snap(bounds.bottom));
+                    canvas.snap(bounds.right - terminal), canvas.snap(bounds.bottom));
     if (width(body) <= 0.0f || height(body) <= 0.0f) {
         return;
     }
@@ -1194,11 +1198,10 @@ void drawTraySolidBattery(Canvas& canvas, D2D1_RECT_F bounds, GaugeVisual const&
 
     float const capHeight = std::max(canvas.snap(height(body) * 0.42f), canvas.pixel());
     float const capTop = canvas.snap(body.top + (height(body) - capHeight) * 0.5f);
-    // One pixel of daylight between body and terminal. Butted together they are the same colour
-    // at a full charge and merge into a single blob with a bump; separated, the terminal reads
-    // even when both are bright.
-    D2D1_RECT_F const cap = D2D1::RectF(body.right + canvas.pixel(), capTop,
-                                        canvas.snap(bounds.right), capTop + capHeight);
+    // The gap is what makes the terminal visible: butted against the body it is the same colour
+    // at a full charge and the two merge into one blob with a bump.
+    D2D1_RECT_F const cap =
+        D2D1::RectF(body.right + gap, capTop, canvas.snap(bounds.right), capTop + capHeight);
 
     fillRounded(canvas, body, radius, visual.track);
     // The terminal takes the bright colour rather than the dim one. It is what distinguishes a

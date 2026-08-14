@@ -75,6 +75,21 @@ enum class TrayStyle {
     Percentage,
 };
 
+// What a healthy charge is drawn in on the notification-area icon.
+//
+// Only a healthy charge: low and critical keep their amber and red whatever is chosen here,
+// because those two carry meaning rather than taste. Auto measures the taskbar and picks black
+// or white against it, which is the only choice that cannot end up invisible -- a taskbar tinted
+// with the accent swallows an accent-coloured mark completely.
+enum class TrayColor {
+    Auto,
+    Accent,
+    White,
+    Green,
+    Blue,
+    Pink,
+};
+
 struct EventSettings {
     bool enabled = true;
     bool playSound = true;
@@ -110,6 +125,7 @@ struct Settings {
     ThemePreference theme = ThemePreference::System;
     LanguagePreference language = LanguagePreference::System;
     TrayStyle trayStyle = TrayStyle::Battery;
+    TrayColor trayColor = TrayColor::Auto;
 
     BackdropMode backdrop = BackdropMode::Opaque;
     // Alpha of the window's own background layer, in [kMinimumWindowOpacity, 1]. Fully

@@ -262,6 +262,16 @@ void SettingsPage::addAppearance(StackPanel& column) {
             m_context.applySettings(std::move(next));
         }));
 
+    auto* trayColourCard = group->addCard(glyph::kSettings, std::wstring(text(Text::TrayColorLabel)));
+    trayColourCard->setControl(std::make_unique<ComboBox>(
+        textsFor({Text::TrayColorAuto, Text::TrayColorAccent, Text::TrayColorWhite,
+                  Text::TrayColorGreen, Text::TrayColorBlue, Text::TrayColorPink}),
+        static_cast<int>(current.trayColor), [this](int picked) {
+            Settings next = SettingsStore::instance().get();
+            next.trayColor = static_cast<TrayColor>(picked);
+            m_context.applySettings(std::move(next));
+        }));
+
     addBackdrop(*group);
 }
 

@@ -49,6 +49,15 @@ constexpr std::array<std::pair<TrayStyle, char const*>, 3> kTrayStyleNames = {{
     {TrayStyle::Percentage, "percentage"},
 }};
 
+constexpr std::array<std::pair<TrayColor, char const*>, 6> kTrayColorNames = {{
+    {TrayColor::Auto, "auto"},
+    {TrayColor::Accent, "accent"},
+    {TrayColor::White, "white"},
+    {TrayColor::Green, "green"},
+    {TrayColor::Blue, "blue"},
+    {TrayColor::Pink, "pink"},
+}};
+
 constexpr std::array<std::pair<BackdropMode, char const*>, 4> kBackdropNames = {{
     {BackdropMode::Opaque, "opaque"},
     {BackdropMode::Blur, "blur"},
@@ -101,6 +110,7 @@ json::Value toJson(Settings const& settings) {
     root.set("theme", enumName(kThemeNames, settings.theme));
     root.set("language", enumName(kLanguageNames, settings.language));
     root.set("trayStyle", enumName(kTrayStyleNames, settings.trayStyle));
+    root.set("trayColor", enumName(kTrayColorNames, settings.trayColor));
     root.set("backdrop", enumName(kBackdropNames, settings.backdrop));
     root.set("windowOpacity", static_cast<double>(settings.windowOpacity));
 
@@ -270,6 +280,7 @@ Settings Settings::load(std::filesystem::path const& file) {
     settings.theme = parseEnum(kThemeNames, root["theme"], settings.theme);
     settings.language = parseEnum(kLanguageNames, root["language"], settings.language);
     settings.trayStyle = parseEnum(kTrayStyleNames, root["trayStyle"], settings.trayStyle);
+    settings.trayColor = parseEnum(kTrayColorNames, root["trayColor"], settings.trayColor);
 
     settings.backdrop = parseEnum(kBackdropNames, root["backdrop"], settings.backdrop);
     settings.windowOpacity = std::clamp(root["windowOpacity"].asFloat(settings.windowOpacity),

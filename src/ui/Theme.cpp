@@ -452,9 +452,26 @@ D2D1_COLOR_F Theme::trayLevelColor(int percent, bool darkTaskbar) const {
     if (percent >= 0 && percent <= settings.lowThresholdPercent) {
         return m_impl->palette.caution;
     }
-    // The notification area is the one place the accent cannot be trusted: the taskbar may be
-    // tinted with that very accent, and a mark the colour of its own background disappears.
-    // A healthy level is therefore drawn in whatever contrasts with the taskbar.
+    // A healthy level is the user's to choose, because the notification area is the one place
+    // the accent cannot be trusted: the taskbar may be tinted with that very accent, and a mark
+    // the colour of its own background disappears. Automatic measures the taskbar instead, which
+    // is why it is the default and the only choice that cannot end up invisible.
+    switch (settings.trayColor) {
+        case TrayColor::Accent:
+            return m_impl->palette.accent;
+        case TrayColor::White:
+            return D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.95f);
+        // Picked light enough to hold up on a dark taskbar and saturated enough to survive a
+        // light one, since the same value has to serve both.
+        case TrayColor::Green:
+            return D2D1::ColorF(0.29f, 0.78f, 0.31f, 1.0f);
+        case TrayColor::Blue:
+            return D2D1::ColorF(0.29f, 0.65f, 1.0f, 1.0f);
+        case TrayColor::Pink:
+            return D2D1::ColorF(1.0f, 0.43f, 0.78f, 1.0f);
+        case TrayColor::Auto:
+            break;
+    }
     return darkTaskbar ? D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.9f) : D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.9f);
 }
 
