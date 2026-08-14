@@ -39,6 +39,7 @@ no network code.
 | **Two kinds of notification** | The app's own Fluent card, which never steals focus from a game, and real Windows notifications that land in the Action Center. Per event, independently. |
 | **Battery history** | A chart of how each controller drains, the drain rate, and an estimate of how long is left. |
 | **A window that belongs on Windows** | Custom-drawn Fluent chrome, light and dark themes that follow the system, per-monitor DPI, and animation that costs nothing when nothing is moving. |
+| **A tray icon you can colour** | Automatic contrast against your taskbar by default — which matters, because a taskbar tinted with your accent swallows an accent-coloured mark — or the system accent, or a colour you pick. Low and critical keep their amber and red regardless. |
 | **English and Russian** | Follows your Windows display language, or pick one. |
 | **Nothing leaves your machine** | No telemetry, no accounts, no network code at all. |
 
@@ -57,11 +58,15 @@ no network code.
 ## Install
 
 Download `PowerPeek.exe` from the [latest release](https://github.com/k0te1ch/powerpeek/releases/latest)
-and run it. That is the whole installation — it is a single self-contained executable.
+and run it. That is the whole installation — it is a single self-contained executable, and it will
+keep working from wherever you put it.
+
+An installer is also built for each release, for a Start menu entry and an uninstall entry; the
+portable executable and the installed copy are the same program and share the same settings.
 
 To have it start with Windows, turn on **Start with Windows** in Settings.
 
-To remove it: quit from the tray menu, delete the executable, and delete
+To remove the portable copy: quit from the tray menu, delete the executable, and delete
 `%LOCALAPPDATA%\PowerPeek` if you want its settings gone too.
 
 ## Requirements
@@ -199,6 +204,15 @@ A short tour of the layout:
 | `src/notify` | Turning an event into a sound, a card and a toast |
 | `src/platform` | Autostart, single instance, system theme, shell integration |
 | `src/ui` | Rendering: device, theme, window, widgets, drawing, pages |
+
+## Support the author
+
+PowerPeek is written by **[k0te1ch](https://github.com/k0te1ch)** and given away under the GPL.
+
+If it saved you a dead controller mid-match, a star on the repository is genuinely useful — it is
+how anyone else finds it. If you would like to go further, there is a
+[Boosty page](https://boosty.to/k0te1ch). Neither is expected, and nothing in the application is
+withheld behind either.
 
 ## Licence
 
