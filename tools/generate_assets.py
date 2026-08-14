@@ -29,9 +29,11 @@ SAMPLE_RATE = 48_000
 
 # A bright emerald, not the Xbox green this icon used to wear: the app reports the
 # charge of headphones, mice, pens and pads, so a console brand colour points at the
-# wrong thing. Emerald also survives both taskbars -- #107C10 sinks into a dark one.
-GREEN_TOP = (61, 220, 132, 255)
-GREEN_BOTTOM = (14, 150, 78, 255)
+# Teal rather than the Xbox green this started with: the application reports battery for
+# headphones and mice as much as for pads, and that particular green reads as a console brand.
+# Light enough at the top to hold up on a dark taskbar, deep enough at the bottom for a light one.
+GREEN_TOP = (54, 211, 178, 255)
+GREEN_BOTTOM = (16, 138, 128, 255)
 
 ICON_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
