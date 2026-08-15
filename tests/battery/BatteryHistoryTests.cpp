@@ -189,6 +189,45 @@ TEST_CASE("batteryHistory: a corrupt or truncated line is skipped and the rest o
     CHECK(level(samples[2]) == 60);
 }
 
+TEST_CASE("batteryHistory: a line with no usable level or instant is not a sample") {
+    TempDir dir;
+    std::filesystem::path const file = dir.file(L"history.jsonl");
+    std::int64_t const stamp = secondsSince1970(testAnchor());
+
+    std::string line;
+
+    // The classic hand-edit. A typed read would substitute zero here, and a fabricated 0%
+    // is worse than a lost sample: it draws a dip to empty on the chart, and the discharge
+    // estimate is computed from consecutive readings, so it takes the slope with it.
+    SUBCASE("a quoted level") {
+        line = std::format(R"({{"c":"discharging","id":"pad-1","p":"50","t":{}}})", stamp);
+    }
+
+    SUBCASE("no level key at all") {
+        line = std::format(R"({{"c":"discharging","id":"pad-1","t":{}}})", stamp);
+    }
+
+    // An instant defaulted to zero is 1 January 1970, which every retention window drops --
+    // silently, and looking exactly like a sample that was never written.
+    SUBCASE("a quoted instant") {
+        line = std::format(R"({{"c":"discharging","id":"pad-1","p":50,"t":"{}"}})", stamp);
+    }
+
+    SUBCASE("no instant key at all") {
+        line = R"({"c":"discharging","id":"pad-1","p":50})";
+    }
+
+    writeLog(file, {line, logLine("pad-1", 77, "discharging", testAnchor() + hours{1})});
+
+    BatteryHistory history{file};
+    history.setRetention(kAllHistory);
+
+    // The good line either side of it still loads: one unusable record does not cost the log.
+    std::vector<HistorySample> const samples = history.samplesFor(L"pad-1");
+    REQUIRE(samples.size() == 1u);
+    CHECK(level(samples[0]) == 77);
+}
+
 TEST_CASE("batteryHistory: a line with no usable id is not a sample") {
     TempDir dir;
     std::filesystem::path const file = dir.file(L"history.jsonl");

@@ -76,11 +76,25 @@ std::optional<HistorySample> decode(std::string_view text) {
         return std::nullopt;
     }
 
+    // The instant and the level are the two fields a sample cannot be reconstructed without,
+    // and the typed reads below would quietly substitute a zero for either. A hand-edited
+    // line carrying a quoted level -- "p": "78" -- would load as a perfectly valid-looking
+    // reading of 0%, which draws a dip to empty on the chart and drags the discharge estimate
+    // down with it. Every other malformed line here is dropped, and these belong with them:
+    // inventing a reading is worse than losing one.
+    json::Value const& when = line["t"];
+    json::Value const& level = line["p"];
+    if (when.kind() != json::Value::Kind::Number || level.kind() != json::Value::Kind::Number) {
+        return std::nullopt;
+    }
+
     HistorySample sample;
     sample.when = Clock::time_point{std::chrono::duration_cast<Clock::duration>(
-        std::chrono::seconds{static_cast<std::int64_t>(line["t"].asNumber())})};
+        std::chrono::seconds{static_cast<std::int64_t>(when.asNumber())})};
     sample.controllerId = line["id"].asWide();
-    sample.percent = static_cast<std::uint8_t>(std::clamp(line["p"].asInt(0), 0, 100));
+    sample.percent = static_cast<std::uint8_t>(std::clamp(level.asInt(0), 0, 100));
+    // The charge word is different: a state a later version invented degrades to Unknown,
+    // which ends a discharge run and costs an estimate rather than fabricating a reading.
     sample.charge = chargeFromKey(line["c"].asString());
     if (sample.controllerId.empty()) {
         return std::nullopt;
