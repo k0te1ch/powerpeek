@@ -519,6 +519,33 @@ void writeValue(std::string& out, Value const& value, int indent, int depth) {
     }
 }
 
+// The double a float should be stored as.
+//
+// Widening 0.8f gives 0.800000011920929..., and writeNumber is then right to print all of
+// it: that is genuinely the shortest form of that double. Round-tripping through the
+// shortest decimal the *float* needs gives the double 0.8 instead, which prints as "0.8"
+// and reads back as the same float -- a double is far finer-grained than the gap between
+// two neighbouring floats, so the second rounding cannot land on a different one.
+double asStoredDouble(float value) {
+    if (!std::isfinite(value)) {
+        // No decimal form to round-trip through; writeNumber turns it into null regardless.
+        return static_cast<double>(value);
+    }
+
+    std::array<char, 32> buffer{};
+    auto const printed = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+    if (printed.ec != std::errc{}) {
+        return static_cast<double>(value);
+    }
+
+    double widened = 0.0;
+    auto const parsed = std::from_chars(buffer.data(), printed.ptr, widened);
+    if (parsed.ec != std::errc{}) {
+        return static_cast<double>(value);
+    }
+    return widened;
+}
+
 }  // namespace
 
 struct Value::Storage {
@@ -532,6 +559,8 @@ Value::Value(std::nullptr_t) : Value() {}
 Value::Value(bool value) : m_storage(std::make_unique<Storage>(Storage{value})) {}
 
 Value::Value(double value) : m_storage(std::make_unique<Storage>(Storage{value})) {}
+
+Value::Value(float value) : Value(asStoredDouble(value)) {}
 
 Value::Value(int value) : Value(static_cast<double>(value)) {}
 

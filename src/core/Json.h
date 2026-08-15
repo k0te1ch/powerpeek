@@ -28,6 +28,10 @@ public:
     Value(std::nullptr_t);
     Value(bool value);
     Value(double value);
+    // Stored as the double the float's own shortest decimal parses to, so a setting held
+    // as a float is written the way it was written down: 0.8f as 0.8 rather than as the
+    // 0.800000011920929 that widening it to double really is.
+    Value(float value);
     Value(int value);
     Value(std::string value);
     Value(std::string_view value);

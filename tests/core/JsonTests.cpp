@@ -482,6 +482,61 @@ TEST_CASE("json: serialising a number uses the shortest round-tripping form") {
     CHECK(dump(Value(100.0), 0) == "100");
 }
 
+TEST_CASE("json: a float is written as the decimal it was set from") {
+    // The event volumes, the master volume and the window opacity are all floats, and every
+    // save writes all of them out again. Widening 0.7f to a double first is faithful to the
+    // bits and useless to whoever opens the file: it then reads 0.699999988079071 for a slider
+    // nobody has touched, and the number is no longer one anybody can edit by hand. Storing the
+    // double that the float's own shortest decimal parses to keeps the written form the one
+    // that was chosen.
+    SUBCASE("the written form is the float's own shortest decimal") {
+        CHECK(dump(Value(0.8f), 0) == "0.8");
+        CHECK(dump(Value(0.1f), 0) == "0.1");
+        CHECK(dump(Value(0.35f), 0) == "0.35");
+        CHECK(dump(Value(0.7f), 0) == "0.7");
+        CHECK(dump(Value(1.0f), 0) == "1");
+
+        // Shortest is not the same as short. This one needs eight digits, and a rule that
+        // trimmed it to something tidier would name a different float.
+        CHECK(dump(Value(1.0f / 3.0f), 0) == "0.33333334");
+    }
+
+    SUBCASE("what comes back is the identical float") {
+        // Equality rather than Approx, because what this rules out is precisely a value that
+        // returns close enough to look right and then writes itself differently on the save
+        // after that, producing a diff in a setting the user never touched.
+        CHECK(parse(dump(Value(0.8f), 0)).asFloat(-1.0f) == 0.8f);
+        CHECK(parse(dump(Value(0.1f), 0)).asFloat(-1.0f) == 0.1f);
+        CHECK(parse(dump(Value(0.35f), 0)).asFloat(-1.0f) == 0.35f);
+        CHECK(parse(dump(Value(1.0f), 0)).asFloat(-1.0f) == 1.0f);
+        CHECK(parse(dump(Value(1.0f / 3.0f), 0)).asFloat(-1.0f) == 1.0f / 3.0f);
+
+        // The rounding happens in the constructor rather than in the writer, so the stored
+        // value is already the same float before any text exists.
+        CHECK(Value(0.8f).asFloat(-1.0f) == 0.8f);
+        CHECK(Value(1.0f / 3.0f).asFloat(-1.0f) == 1.0f / 3.0f);
+    }
+
+    SUBCASE("a double keeps every digit it has") {
+        // Only the float overload shortens. A double has no coarser type behind it whose
+        // spelling could be recovered, so trimming one would throw away digits its caller meant
+        // to store -- and this exact text is what a float would write again if the new overload
+        // were ever removed and 0.8f widened on its way in.
+        CHECK(dump(Value(static_cast<double>(0.8f)), 0) == "0.800000011920929");
+        CHECK(dump(Value(0.8), 0) == "0.8");
+        CHECK(dump(Value(0.1), 0) == "0.1");
+    }
+
+    SUBCASE("a non-finite float has no decimal to round-trip through") {
+        // The shortening step sees these before the writer does and has no decimal to work
+        // with, so whatever it hands on has to be the same non-finite number -- otherwise the
+        // rule that turns both into null is applied to something else.
+        CHECK(dump(Value(std::numeric_limits<float>::infinity()), 0) == "null");
+        CHECK(dump(Value(-std::numeric_limits<float>::infinity()), 0) == "null");
+        CHECK(dump(Value(std::numeric_limits<float>::quiet_NaN()), 0) == "null");
+    }
+}
+
 TEST_CASE("json: infinity and NaN serialise as null") {
     // Neither can arrive from parse(), so both can only come from code -- and writing `inf`
     // or `nan` would produce a file that this parser and every other one refuses on the next
@@ -619,6 +674,27 @@ TEST_CASE("json: the constructors pick the kind a caller expects") {
     // is not part of the value.
     std::string_view const view = "hello world";
     CHECK(Value(view.substr(0, 5)).asString() == "hello");
+}
+
+TEST_CASE("json: the float constructor did not change what an int or a bool selects") {
+    // Value(float) sits between the two numeric overloads the settings writer already used, and
+    // both an int and a bool convert to a float as readily as they do to a double. Only the
+    // exact match on their own overload keeps them off it, and deleting either as redundant is
+    // a plausible tidy-up -- one that would route every count and every flag in the settings
+    // file through 24 bits of mantissa.
+    CHECK(Value(true).kind() == Value::Kind::Bool);
+    CHECK(dump(Value(true), 0) == "true");
+    CHECK(dump(Value(false), 0) == "false");
+
+    // Two to the power 24 plus one is the smallest positive int no float can hold, which makes
+    // it the one value that tells the two conversions apart: through a float it comes back as
+    // 16777216. Nothing in the application counts that high today, but the failure would be a
+    // number silently changing rather than anything visible at the call site.
+    Value const large(16777217);
+    CHECK(large.kind() == Value::Kind::Number);
+    CHECK(large.asInt() == 16777217);
+    CHECK(dump(large, 0) == "16777217");
+    CHECK(dump(Value(-16777217), 0) == "-16777217");
 }
 
 TEST_CASE("json: copying a Value deep-copies its storage") {
