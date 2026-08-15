@@ -440,6 +440,21 @@ TEST_CASE("animated: retargeting continues from the current value instead of jum
     }
 }
 
+TEST_CASE("animated: retargeting to the value it already rests at starts nothing") {
+    Animated a(0.5f);
+    REQUIRE_FALSE(a.running());
+
+    // The widget is at rest on this value already, so there is nothing to animate. Starting one
+    // anyway costs a whole duration of identical frames, each asking the window to draw the
+    // next -- and a tray application that wakes for no reason is the failure this window's
+    // draw-on-demand loop exists to avoid.
+    a.animateTo(0.5f, kDurationNormal);
+    CHECK_FALSE(a.running());
+
+    // The value is untouched either way; running() is what says whether the loop was woken.
+    CHECK(a.value() == doctest::Approx(0.5f));
+}
+
 TEST_CASE("animated: retargeting to the destination it is already heading for is ignored") {
     Animated a(0.0f);
 
