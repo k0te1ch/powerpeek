@@ -292,11 +292,15 @@ class Slider : public Widget {
 public:
     using Handler = std::function<void(float)>;
 
-    Slider(float minimum, float maximum, float value, Handler onChanged);
+    // The range is a pair of decimals the user is shown, so it is held as they are written
+    // rather than as the floats nearest to them; see ui::snapToStep.
+    Slider(double minimum, double maximum, float value, Handler onChanged);
 
     void setValue(float value, bool animate = true);
     float value() const noexcept { return m_value; }
-    void setStep(float step) { m_step = step; }
+    // A double, and deliberately: the step is a decimal the user is shown ("5 %", "0.05"),
+    // and the float nearest to it is not that decimal. See ui::snapToStep.
+    void setStep(double step) { m_step = step; }
     // Drawn to the right of the track; "80 %" and the like.
     void setFormatter(std::function<std::wstring(float)> formatter);
 
@@ -315,10 +319,10 @@ private:
     void setFromPoint(D2D1_POINT_2F point);
     void commit(float value);
 
-    float m_minimum = 0.0f;
-    float m_maximum = 1.0f;
+    double m_minimum = 0.0;
+    double m_maximum = 1.0;
     float m_value = 0.0f;
-    float m_step = 0.0f;  // 0 = continuous
+    double m_step = 0.0;  // 0 = continuous
     Animated m_position{0.0f};
     Handler m_onChanged;
     std::function<std::wstring(float)> m_formatter;

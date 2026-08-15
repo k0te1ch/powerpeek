@@ -305,8 +305,9 @@ Settings Settings::load(std::filesystem::path const& file) {
         parseEnum(kToastPositionNames, root["toastPosition"], settings.toastPosition);
 
     settings.backdrop = parseEnum(kBackdropNames, root["backdrop"], settings.backdrop);
-    settings.windowOpacity = std::clamp(root["windowOpacity"].asFloat(settings.windowOpacity),
-                                        kMinimumWindowOpacity, 1.0f);
+    settings.windowOpacity =
+        std::clamp(root["windowOpacity"].asFloat(settings.windowOpacity),
+                   static_cast<float>(kMinimumWindowOpacity), 1.0f);
 
     settings.masterVolume =
         std::clamp(root["masterVolume"].asFloat(settings.masterVolume), 0.0f, 1.0f);

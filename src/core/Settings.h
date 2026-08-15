@@ -63,7 +63,10 @@ enum class BackdropMode {
 // dark theme over a white desktop: at 0.7 the composite reads #636363 and the contrast ratio
 // against white is about 6:1, comfortably past the 4.5:1 the text has to clear. At 0.5 the
 // same case falls to about 3:1 and the labels start to disappear into the wallpaper.
-inline constexpr float kMinimumWindowOpacity = 0.7f;
+// A double rather than a float because it is also where the slider's grid starts, and a
+// grid counted from the float nearest 0.7 puts its fourth stop on 0.84999996 instead of
+// on the 0.85 the label claims. Narrowed where a float is what is wanted.
+inline constexpr double kMinimumWindowOpacity = 0.70;
 
 // How the notification-area icon renders the level.
 enum class TrayStyle {

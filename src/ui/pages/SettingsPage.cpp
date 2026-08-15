@@ -28,7 +28,7 @@ constexpr float kLowMinimum = 10.0f;
 constexpr float kLowMaximum = 50.0f;
 constexpr float kCriticalMinimum = 5.0f;
 
-constexpr float kOpacityStep = 0.05f;
+constexpr double kOpacityStep = 0.05;
 
 // Where the opacity lands the first time a backdrop is chosen. A backdrop behind a fully
 // opaque window is invisible, and a control that appears to do nothing reads as broken.

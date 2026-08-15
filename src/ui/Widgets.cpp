@@ -1,5 +1,7 @@
 #include "ui/Widgets.h"
 
+#include "ui/Quantise.h"
+
 #include <windowsx.h>
 
 #include <algorithm>
@@ -519,12 +521,12 @@ void ToggleSwitch::toggle() {
     }
 }
 
-Slider::Slider(float minimum, float maximum, float value, Handler onChanged)
+Slider::Slider(double minimum, double maximum, float value, Handler onChanged)
     : m_minimum(minimum),
-      m_maximum(std::max(maximum, minimum + 1e-6f)),
-      m_value(std::clamp(value, minimum, maximum)),
+      m_maximum(std::max(maximum, minimum + 1e-6)),
+      m_value(static_cast<float>(std::clamp(static_cast<double>(value), minimum, maximum))),
       m_onChanged(std::move(onChanged)) {
-    m_position.snapTo((m_value - m_minimum) / (m_maximum - m_minimum));
+    m_position.snapTo(static_cast<float>((m_value - m_minimum) / (m_maximum - m_minimum)));
     m_readout.setStyle(TypeStyle::Body);
 }
 
@@ -537,12 +539,13 @@ void Slider::setFormatter(std::function<std::wstring(float)> formatter) {
 }
 
 void Slider::setValue(float value, bool animate) {
-    float const clamped = std::clamp(value, m_minimum, m_maximum);
+    float const clamped =
+        static_cast<float>(std::clamp(static_cast<double>(value), m_minimum, m_maximum));
     if (m_value == clamped) {
         return;
     }
     m_value = clamped;
-    float const fraction = (m_value - m_minimum) / (m_maximum - m_minimum);
+    float const fraction = static_cast<float>((m_value - m_minimum) / (m_maximum - m_minimum));
     if (animate) {
         m_position.animateTo(fraction, kDurationNormal, Easing::Entrance);
     } else {
@@ -633,13 +636,10 @@ void Slider::setFromPoint(D2D1_POINT_2F point) {
     if (span <= 0.0f) {
         return;
     }
-    float fraction = std::clamp((point.x - track.left) / span, 0.0f, 1.0f);
-    float value = m_minimum + fraction * (m_maximum - m_minimum);
-    if (m_step > 0.0f) {
-        value = m_minimum + std::round((value - m_minimum) / m_step) * m_step;
-    }
+    double const fraction = std::clamp((point.x - track.left) / span, 0.0f, 1.0f);
+    double const value = m_minimum + fraction * (m_maximum - m_minimum);
     // Dragging must track the pointer exactly, so the position snaps rather than eases.
-    setValue(value, false);
+    setValue(snapToStep(value, m_minimum, m_maximum, m_step), false);
     commit(m_value);
 }
 
@@ -671,16 +671,22 @@ bool Slider::onKey(WPARAM key) {
     if (!enabled()) {
         return false;
     }
-    float const step = m_step > 0.0f ? m_step : (m_maximum - m_minimum) / 20.0f;
+    double const step = m_step > 0.0 ? m_step : (m_maximum - m_minimum) / 20.0;
+    // Every arrow goes back through the grid rather than adding to wherever the value already
+    // was. Stepping repeatedly from a value that is a rounding error off the grid walks
+    // further off it with each press, and the settings file keeps every one of those errors.
+    auto const stepped = [this](double by) {
+        return snapToStep(static_cast<double>(m_value) + by, m_minimum, m_maximum, m_step);
+    };
     switch (key) {
         case VK_LEFT:
-        case VK_DOWN: setValue(m_value - step); break;
+        case VK_DOWN: setValue(stepped(-step)); break;
         case VK_RIGHT:
-        case VK_UP: setValue(m_value + step); break;
-        case VK_PRIOR: setValue(m_value + step * 5.0f); break;
-        case VK_NEXT: setValue(m_value - step * 5.0f); break;
-        case VK_HOME: setValue(m_minimum); break;
-        case VK_END: setValue(m_maximum); break;
+        case VK_UP: setValue(stepped(step)); break;
+        case VK_PRIOR: setValue(stepped(step * 5.0)); break;
+        case VK_NEXT: setValue(stepped(-step * 5.0)); break;
+        case VK_HOME: setValue(static_cast<float>(m_minimum)); break;
+        case VK_END: setValue(static_cast<float>(m_maximum)); break;
         default: return false;
     }
     commit(m_value);
