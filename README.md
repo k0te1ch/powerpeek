@@ -82,8 +82,10 @@ frequently wrong, which is why they are hidden by default.
 ## Building from source
 
 You need Visual Studio 2022 with the **Desktop development with C++** workload. That brings the
-Windows SDK, CMake and Ninja with it, and there is nothing else to install: the project has no
-external dependencies whatsoever.
+Windows SDK, CMake and Ninja with it, and there is nothing else to install: the application has no
+external dependencies whatsoever, and builds with no network connection at all. The single exception
+is the test framework, fetched only when you build the tests and never present in the shipped
+executable.
 
 ```bash
 git clone https://github.com/k0te1ch/powerpeek.git
@@ -97,6 +99,7 @@ The result is `build\release\PowerPeek.exe`.
 |---|---|
 | `tools\build.bat release` | Optimised build |
 | `tools\build.bat debug` | Debug build |
+| `tools\test.bat` | Builds and runs the unit tests |
 | `tools\syntax-check.bat src\ui\Widgets.cpp` | Compiles one file, for a fast edit loop |
 | `python tools\generate_assets.py` | Regenerates the icon and the built-in sounds |
 
@@ -185,11 +188,16 @@ tested for.
 Issues and pull requests are welcome.
 
 - **Build it first.** `tools\build.bat release` must stay warning-free.
+- **Run the tests.** `tools\test.bat` covers the layer with no window: JSON, settings, the localisation
+  table, the notification rules, the battery history and the WAV parser. A change to behaviour there
+  brings the test that would have caught the old one.
+- **Work on a branch.** `main` refuses direct pushes; every change arrives as a pull request and is
+  squashed on merge.
 - **Conventional Commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `test:`, `build:`, `ci:`,
   `chore:`. The PR title becomes the commit on `main` and drives the version bump, so it has to be a
   valid Conventional Commit too.
-- **No new dependencies.** The Windows SDK is the entire dependency list, and keeping it that way is a
-  feature, not an accident.
+- **No new dependencies in the application.** The Windows SDK is its entire dependency list; doctest is
+  fetched for the test binary alone. Keeping that line where it is is a feature, not an accident.
 - **All user-visible text goes in `src/core/Strings.h`** with both English and Russian filled in — a
   missing translation is a compile error, not a runtime surprise.
 - **Match the surrounding style.** Comments explain *why*; the code says *what*.
@@ -204,6 +212,7 @@ A short tour of the layout:
 | `src/notify` | Turning an event into a sound, a card and a toast |
 | `src/platform` | Autostart, single instance, system theme, shell integration |
 | `src/ui` | Rendering: device, theme, window, widgets, drawing, pages |
+| `tests` | Unit tests, over everything above that needs no window |
 
 ## Support the author
 

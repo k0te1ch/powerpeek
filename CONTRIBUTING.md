@@ -9,8 +9,9 @@ a paragraph than in a pull request.
 
 ## Building
 
-Visual Studio 2022 with the **Desktop development with C++** workload. Nothing else — the project has
-no external dependencies and adding one is a design change, not a detail.
+Visual Studio 2022 with the **Desktop development with C++** workload. Nothing else — the shipped
+application has no external dependencies and adding one is a design change, not a detail. The tests
+are the single exception, and they are confined to the test binary; see below.
 
 ```bash
 tools\build.bat release
@@ -19,9 +20,58 @@ tools\build.bat release
 While iterating on a single file, `tools\syntax-check.bat src\ui\Widgets.cpp` compiles just that
 translation unit and is much faster than a full build.
 
+## Tests
+
+```bash
+tools\test.bat
+```
+
+That configures, builds and runs the suite; pass anything else through to `ctest`, so
+`tools\test.bat -R eventDetector` runs one unit's cases. CI runs the identical script.
+
+Tests link `PowerPeekCore`, the library holding everything with no window, no device and no message
+loop: JSON, settings, the localisation table, the event rules, the battery history and the easing
+maths. That split is what makes the suite possible at all — a build agent has no controller, no audio
+endpoint and no interactive session, so anything above that line cannot be covered here and is not
+pretended to be.
+
+Two consequences worth knowing before you write a test:
+
+- **Nothing may read the clock, the locale or `%LOCALAPPDATA%`.** The units that care about time take
+  it as an argument for exactly this reason; anything needing a path gets one from `TempDir`.
+- **`tools\test.bat` is the only part of the build that reaches the network**, because doctest is
+  fetched at configure time. It lives on its own CMake preset so an ordinary build of the application
+  still works with no connection at all.
+
+A change to behaviour in that library wants a test. A change to the drawing code cannot have one, and
+saying so in the pull request is better than inventing a test that asserts nothing.
+
+## Branches and pull requests
+
+`main` is always releasable, and nothing lands on it except by merging a pull request — pushing
+straight to it is refused by the repository, for everyone.
+
+```bash
+git switch main && git pull
+git switch -c feat/short-description
+```
+
+Name the branch for the change: `feat/`, `fix/`, `docs/`, `refactor/`, `chore/`. One branch per
+change, and a new change always starts from a freshly pulled `main` rather than from the last branch.
+
+Merge with **squash**, which is why the pull request *title* carries the Conventional Commit prefix:
+that title becomes the single commit on `main`, and release-please reads it to decide the next version.
+Delete the branch afterwards.
+
+Releases are not cut by hand. release-please keeps a release pull request up to date from the commits
+on `main`; merging it writes the changelog, bumps `version.txt`, tags, and the release workflow builds
+and attaches the installer and the portable zip. Never edit `version.txt` or `CHANGELOG.md` yourself.
+
 ## What a pull request needs
 
 - **A clean build.** `tools\build.bat release` produces no warnings today. Keep it that way.
+- **A green suite.** `tools\test.bat` passes, and a change to behaviour under `PowerPeekCore` brings
+  the test that would have caught the old behaviour.
 - **A Conventional Commit title.** The PR title becomes the commit on `main` and drives the version
   bump, so it has to parse: `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `test:`, `build:`, `ci:`,
   `chore:`, with `!` for a breaking change.
