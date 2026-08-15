@@ -15,6 +15,12 @@
 // doctest prints an operand by streaming it, and there is no operator<< from std::wstring to
 // a narrow stream. Without these two, every failed comparison of a controller id or a
 // localised string reports "{?}" for both sides and the failure says nothing at all.
+//
+// They carry more weight than that, though, because the test binary is built with
+// DOCTEST_CONFIG_DOUBLE_STRINGIFY: doctest stringifies twice, so a peek type whose own
+// toString returns a wstring_view -- ChargeState and PowerSource both do -- lands here on the
+// second pass. Without that arrangement, comparing two charge states is not a poor failure
+// message but a compile error inside the framework. See tests/CMakeLists.txt.
 namespace doctest {
 
 template <>

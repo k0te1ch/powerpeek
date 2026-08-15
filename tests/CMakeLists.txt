@@ -28,6 +28,15 @@ add_executable(pp_tests ${PP_TEST_SOURCES})
 
 target_include_directories(pp_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# Turns doctest's stringification into toString(toString(value)), and it is required rather
+# than cosmetic. Several peek types already have a toString of their own returning a
+# std::wstring_view; argument-dependent lookup finds that from inside the framework, which
+# then cannot concatenate a wide view with its narrow buffer. With the second pass, that view
+# reaches the StringMaker in TestSupport.h instead, and CHECK(a == b) on a ChargeState both
+# compiles and prints the state names. Defined on the target so every translation unit,
+# including the one instantiating doctest, agrees on it.
+target_compile_definitions(pp_tests PRIVATE DOCTEST_CONFIG_DOUBLE_STRINGIFY)
+
 target_link_libraries(pp_tests PRIVATE
     pp_compile_settings
     PowerPeekCore
