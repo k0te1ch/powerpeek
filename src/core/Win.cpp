@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <format>
+#include <limits>
 
 namespace peek {
 namespace {
@@ -19,6 +20,15 @@ std::wstring widen(std::string_view utf8) {
     // A zero length is rejected with ERROR_INVALID_PARAMETER rather than treated as an
     // empty conversion, so it never reaches the API.
     if (utf8.empty()) {
+        return {};
+    }
+
+    // Both APIs take the length as an int, and the cast below is what enforces that. A view
+    // longer than INT_MAX wraps to some negative number, and one of the numbers it can wrap
+    // to is -1 -- which these functions read as "the string is null-terminated". A bounded
+    // conversion would become a scan off the end of a buffer this function does not own.
+    if (utf8.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
+        reportToDebugger(L"xbs: refusing to widen a string longer than INT_MAX\n");
         return {};
     }
 
@@ -40,6 +50,12 @@ std::wstring widen(std::string_view utf8) {
 
 std::string narrow(std::wstring_view utf16) {
     if (utf16.empty()) {
+        return {};
+    }
+
+    // Same trap as widen, from the other direction.
+    if (utf16.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
+        reportToDebugger(L"xbs: refusing to narrow a string longer than INT_MAX\n");
         return {};
     }
 
