@@ -864,6 +864,44 @@ TEST_CASE("wavReader: float samples outside minus one to plus one clamp rather t
     }
 }
 
+TEST_CASE("wavReader: a sample that is not a number decodes to silence") {
+    // std::clamp does not stop a NaN: both of its comparisons are false against one, so it
+    // passes through to std::lrintf, which raises the invalid-operation exception and returns
+    // an unspecified value. That value then is the sample. A file the user chose in the sounds
+    // page is arbitrary input, so this has to be decided rather than left to the library.
+    double const quietNaN = std::numeric_limits<double>::quiet_NaN();
+
+    SUBCASE("thirty two bit") {
+        PcmClip const clip =
+            decode(Fmt{.tag = WAVE_FORMAT_IEEE_FLOAT, .bits = 32},
+                   float32Bytes({0.5f, std::numeric_limits<float>::quiet_NaN(), -0.5f}));
+
+        std::vector<std::int16_t> const expected{16384, 0, -16384};
+        CHECK(samplesOf(clip) == expected);
+    }
+
+    SUBCASE("sixty four bit") {
+        PcmClip const clip = decode(Fmt{.tag = WAVE_FORMAT_IEEE_FLOAT, .bits = 64},
+                                    float64Bytes({quietNaN, 0.5}));
+
+        std::vector<std::int16_t> const expected{0, 16384};
+        CHECK(samplesOf(clip) == expected);
+    }
+}
+
+TEST_CASE("wavReader: a double too large for a float does not reach the conversion") {
+    // Converting a double past FLT_MAX to float is undefined behaviour rather than a lossy
+    // cast, so the value has to be brought into range while it is still a double. The result
+    // is the same rail the smaller overshoots land on; the point is how it gets there.
+    PcmClip const clip =
+        decode(Fmt{.tag = WAVE_FORMAT_IEEE_FLOAT, .bits = 64},
+               float64Bytes({1e300, -1e300, std::numeric_limits<double>::infinity(),
+                             -std::numeric_limits<double>::infinity()}));
+
+    std::vector<std::int16_t> const expected{32767, -32767, 32767, -32767};
+    CHECK(samplesOf(clip) == expected);
+}
+
 TEST_CASE("wavReader: sixty four bit float is decoded") {
     // 64-bit float WAVs come out of scientific and mastering tools; reading them four bytes at a
     // time would decode the low half of each double as a sample of its own and produce noise at
