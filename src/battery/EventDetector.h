@@ -32,16 +32,25 @@ public:
                                       Settings const& settings,
                                       std::chrono::system_clock::time_point now);
 
-    // Forgets the remembered battery levels and the cooldown latches, so that events the
-    // old thresholds already reported can fire again. Which controllers are connected is
-    // kept: a threshold change is not a reconnection and must not chime like one.
+    // Forgets what the threshold rules already reported -- the levels they compare
+    // against and the cooldown latches -- so that events the old thresholds swallowed can
+    // fire again. Which controllers are connected is kept: a threshold change is not a
+    // reconnection and must not chime like one. Neither is the last reading itself
+    // forgotten; the disconnection card is still owed the level the pad went away on.
     void reset();
 
 private:
     struct ControllerState {
         // The whole previous reading rather than just the level, because a disconnection
-        // has to announce a controller that is no longer in the snapshot by name.
+        // has to announce a controller that is no longer in the snapshot -- by name, and
+        // with the charge it had when it went.
         ControllerInfo last;
+        // What the low and critical rules compare the new reading against. It tracks
+        // last.percent everywhere except through reset(), which clears this one alone.
+        // Clearing the reading instead would take the level off the disconnection card:
+        // raise the low threshold, unplug a pad before the next poll, and it would be
+        // announced as though it had never reported a charge at all.
+        int thresholdBaseline = -1;
         // Kept across a disconnection, so that reconnecting a pad does not replay the
         // events it already fired: only the presence flag is cleared.
         bool present = false;
