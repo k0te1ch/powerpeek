@@ -245,8 +245,13 @@ Settings Settings::load(std::filesystem::path const& file) {
 
     int const fileVersion = root["version"].asInt(kCurrentVersion);
     if (fileVersion > kCurrentVersion) {
+        // The version is carried on the returned settings rather than dropped, and save()
+        // refuses to write anything holding one. Without that, this branch protects the file
+        // only until the user changes a single setting, at which point the store saves and
+        // every key this build does not know about is gone for good.
+        settings.version = fileVersion;
         log::warning(L"Settings file version {} is newer than this build understands ({}); "
-                     L"using the defaults until it is written again",
+                     L"using the defaults, and leaving the file alone",
                      fileVersion, kCurrentVersion);
         return settings;
     }
@@ -299,6 +304,16 @@ Settings Settings::load(std::filesystem::path const& file) {
 }
 
 bool Settings::save(std::filesystem::path const& file) const {
+    // These are the defaults standing in for a file this build could not read, and writing
+    // them would replace a newer configuration with them. A user who runs an old build once
+    // -- from a portable copy, say -- would lose everything the newer one had stored.
+    if (version > kCurrentVersion) {
+        log::warning(L"Not writing {}: it was left by version {}, which this build ({}) does "
+                     L"not understand",
+                     file.wstring(), version, kCurrentVersion);
+        return false;
+    }
+
     if (!file.parent_path().empty()) {
         std::error_code ec;
         std::filesystem::create_directories(file.parent_path(), ec);

@@ -103,8 +103,10 @@ struct EventSettings {
 };
 
 struct Settings {
-    // Bumped when a migration is needed; unknown future versions are left alone and the
-    // defaults are used, so an older build cannot corrupt a newer file.
+    // Bumped when a migration is needed. A file left by a newer build is read as the
+    // defaults, and its version is kept here rather than dropped -- which is what makes
+    // save() refuse to write over it. Both halves are needed: reading defensively only
+    // protects the file until the first setting the user changes.
     int version = 1;
 
     bool startWithWindows = false;
@@ -151,7 +153,8 @@ struct Settings {
     static Settings load(std::filesystem::path const& file);
 
     // Writes through a temporary file and replaces atomically, so a crash mid-write
-    // cannot leave a truncated settings file behind.
+    // cannot leave a truncated settings file behind. Refuses, and returns false, for
+    // settings carrying a version this build does not understand.
     bool save(std::filesystem::path const& file) const;
 };
 
