@@ -67,6 +67,14 @@ void Animated::animateTo(float target, std::chrono::milliseconds duration, Easin
     if (m_running && m_to == target) {
         return;
     }
+    // Standing still on the value already asked for. Without this, the call starts a full
+    // animation from a value to itself: every frame of it renders identically, and each one
+    // asks the window for another. The window draws on demand and idles at no processor time
+    // at all, which is what lets it sit in the tray for weeks -- and hover states retarget on
+    // every mouse move, so this is the ordinary call rather than a corner case.
+    if (!m_running && m_current == target) {
+        return;
+    }
     if (duration <= std::chrono::milliseconds::zero()) {
         snapTo(target);
         return;
