@@ -13,11 +13,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The tests are a job of their own rather than a step on the build below, so that a pull
+# request reports "the code is broken" and "the code is wrong" as two separate failures, and
+# so that both can be required independently before a merge. It builds only PowerPeekCore and
+# the test binary, not the UI, which is why running the compiler twice over costs little.
 jobs:
-  # A job of its own rather than a step on the build below, so that a pull request reports
-  # "the code is broken" and "the code is wrong" as two separate failures, and so that both
-  # can be required independently before a merge. It builds only PowerPeekCore and the test
-  # binary, not the UI, which is why running it twice over costs little.
   test:
     name: Unit tests (x64)
     runs-on: windows-latest
@@ -31,7 +31,8 @@ jobs:
       # makes a failure readable in the run summary without downloading anything.
       - name: Build and run the unit tests
         shell: cmd
-        run: call tools\test.bat --output-junit "%CD%\build\tests\junit.xml" || exit /b 1
+        run: |
+          call tools\test.bat --output-junit "%CD%\build\tests\junit.xml" || exit /b 1
 
       - name: Upload the test report
         if: always()
