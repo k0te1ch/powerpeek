@@ -726,6 +726,48 @@ TEST_CASE("wavReader: an extensible fmt chunk with a short cbsize is malformed")
     CHECK(withCbSize(22) == WavStatus::Ok);
 }
 
+TEST_CASE("wavReader: a fmt chunk shorter than the cbsize it declares is malformed") {
+    // cbSize is only the writer's claim about the extension that follows; the chunk size is what
+    // actually arrived. A download cut off after 18 bytes still carries the extensible tag and a
+    // cbSize of 22, and taking the claim at its word classifies the file from a SubFormat that
+    // was never read out of it -- the GUID is whatever this parser cleared the struct to. Those
+    // zeroes match neither the PCM nor the float subtype, so a file that is simply cut in half
+    // was reported as an exotic codec, which sends the bytes on to Media Foundation and logs a
+    // compressed-WAVE line about a truncation.
+    //
+    // The two numbers are the whole case: what the extension claims and how much of it is there.
+    // That the complete 40-byte header still parses is not restated here: the decoding case
+    // above already holds it, and a copy of it alongside these would read as though the clamp
+    // were the thing keeping it working.
+    auto const fmtOf = [](int cbSize, std::size_t extensionBytes) {
+        return Fmt{.tag = WAVE_FORMAT_EXTENSIBLE,
+                   .cbSize = static_cast<std::uint16_t>(cbSize),
+                   .trailing = extensionBytes};
+    };
+
+    SUBCASE("eighteen bytes claiming the twenty two an extensible file needs") {
+        Fmt const fmt = fmtOf(22, 0);
+        REQUIRE(fmtBody(fmt).size() == 18u);
+        CHECK(statusOfFmt(fmt) == WavStatus::Malformed);
+    }
+
+    SUBCASE("eighteen bytes claiming the largest extension the field can hold") {
+        // The size of the claim changes nothing, because there is no extension for it to be a
+        // claim about: the chunk ended at the last field of a WAVEFORMATEX.
+        Fmt const fmt = fmtOf(0xFFFF, 0);
+        REQUIRE(fmtBody(fmt).size() == 18u);
+        CHECK(statusOfFmt(fmt) == WavStatus::Malformed);
+    }
+
+    SUBCASE("twenty bytes of the twenty two") {
+        // Two bytes of extension is wValidBitsPerSample and nothing else; the GUID starts six
+        // bytes further along. Part of an extension is no more classifiable than none of it.
+        Fmt const fmt = fmtOf(22, 2);
+        REQUIRE(fmtBody(fmt).size() == 20u);
+        CHECK(statusOfFmt(fmt) == WavStatus::Malformed);
+    }
+}
+
 TEST_CASE("wavReader: sixteen bit pcm is copied verbatim") {
     // The common case costs one copy and is bit-exact. A round trip through the converter would
     // clip the most negative sample by one least significant bit on every full-scale trough and
