@@ -36,7 +36,7 @@ no network code.
 |---|---|
 | **Live tray icon** | Drawn at runtime rather than chosen from a set of prebuilt images — a battery, a ring gauge or a plain percentage, in your theme and accent colour, at whatever size the shell asks for. With several pads connected it shows the lowest level and how many there are. |
 | **Sounds you choose** | Five events — connected, disconnected, low, critically low, fully charged — each with its own sound file, its own volume, and a Test button. WAV, MP3, FLAC, M4A. Five built-in chimes ship inside the executable. |
-| **Two kinds of notification** | The app's own Fluent card, which never steals focus from a game, and real Windows notifications that land in the Action Center. Per event, independently. |
+| **Two kinds of notification** | The app's own Fluent card, which never steals focus from a game, and real Windows notifications that land in the Action Center. Per event, independently — and the app's own cards go in whichever corner or edge you send them to, which is how you keep them clear of the system's own toasts and of a game's overlay. |
 | **Battery history** | A chart of how each controller drains, the drain rate, and an estimate of how long is left. |
 | **A window that belongs on Windows** | Custom-drawn Fluent chrome, light and dark themes that follow the system, per-monitor DPI, and animation that costs nothing when nothing is moving. |
 | **A tray icon you can colour** | Automatic contrast against your taskbar by default — which matters, because a taskbar tinted with your accent swallows an accent-coloured mark — or the system accent, or a colour you pick. Low and critical keep their amber and red regardless. |

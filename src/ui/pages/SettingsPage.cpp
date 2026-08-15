@@ -272,6 +272,21 @@ void SettingsPage::addAppearance(StackPanel& column) {
             m_context.applySettings(std::move(next));
         }));
 
+    auto* toastCard =
+        group->addCard(glyph::kSettings, std::wstring(text(Text::ToastPositionLabel)));
+    toastCard->setDescription(std::wstring(text(Text::ToastPositionDesc)));
+    toastCard->setControl(std::make_unique<ComboBox>(
+        textsFor({Text::ToastPositionTopLeft, Text::ToastPositionTopCenter,
+                  Text::ToastPositionTopRight, Text::ToastPositionBottomLeft,
+                  Text::ToastPositionBottomCenter, Text::ToastPositionBottomRight}),
+        static_cast<int>(current.toastPosition), [this](int picked) {
+            Settings next = SettingsStore::instance().get();
+            // The list is built in the order the enumerators are declared, which is what
+            // makes the index the value; the same arrangement as the tray colour above.
+            next.toastPosition = static_cast<ToastPosition>(picked);
+            m_context.applySettings(std::move(next));
+        }));
+
     addBackdrop(*group);
 }
 

@@ -19,6 +19,7 @@ using peek::NotificationEvent;
 using peek::Settings;
 using peek::Text;
 using peek::ThemePreference;
+using peek::ToastPosition;
 using peek::TrayColor;
 using peek::TrayStyle;
 using peek::test::TempDir;
@@ -63,6 +64,7 @@ void checkSettingsMatch(Settings const& actual, Settings const& expected) {
     CHECK(actual.language == expected.language);
     CHECK(actual.trayStyle == expected.trayStyle);
     CHECK(actual.trayColor == expected.trayColor);
+    CHECK(actual.toastPosition == expected.toastPosition);
     CHECK(actual.backdrop == expected.backdrop);
     CHECK(actual.windowOpacity == doctest::Approx(expected.windowOpacity));
     CHECK(actual.masterVolume == doctest::Approx(expected.masterVolume));
@@ -98,6 +100,10 @@ TEST_CASE("settings: the defaults match what the header documents") {
     CHECK(settings.language == LanguagePreference::System);
     CHECK(settings.trayStyle == TrayStyle::Battery);
     CHECK(settings.trayColor == TrayColor::Auto);
+
+    // The bottom right is where the cards have always appeared, so an installation that
+    // predates the setting is not moved by gaining it.
+    CHECK(settings.toastPosition == ToastPosition::BottomRight);
 
     // The backdrop is opt-in: nothing about the shipped window changes until it is chosen.
     CHECK(settings.backdrop == BackdropMode::Opaque);
@@ -593,6 +599,71 @@ TEST_CASE("settings: an unrecognised enumeration name keeps the default") {
     }
 }
 
+TEST_CASE("settings: every toast position name reads back as its own corner") {
+    TempDir dir;
+
+    // Each name is tied to the corner that belongs to it rather than merely being distinct
+    // from its neighbours: rotate the table by one place and every name still maps to some
+    // enumerator, so the cards quietly appear in a corner the user never picked. Nothing
+    // about the window looks broken afterwards, which is why nobody would report it.
+    CHECK(loadDocument(dir, R"json({"toastPosition": "top-left"})json").toastPosition ==
+          ToastPosition::TopLeft);
+    CHECK(loadDocument(dir, R"json({"toastPosition": "top-center"})json").toastPosition ==
+          ToastPosition::TopCenter);
+    CHECK(loadDocument(dir, R"json({"toastPosition": "top-right"})json").toastPosition ==
+          ToastPosition::TopRight);
+    CHECK(loadDocument(dir, R"json({"toastPosition": "bottom-left"})json").toastPosition ==
+          ToastPosition::BottomLeft);
+    CHECK(loadDocument(dir, R"json({"toastPosition": "bottom-center"})json").toastPosition ==
+          ToastPosition::BottomCenter);
+    CHECK(loadDocument(dir, R"json({"toastPosition": "bottom-right"})json").toastPosition ==
+          ToastPosition::BottomRight);
+}
+
+TEST_CASE("settings: a toast position the build cannot read keeps the bottom right") {
+    TempDir dir;
+
+    SUBCASE("a name that does not exist") {
+        CHECK(loadDocument(dir, R"json({"toastPosition": "middle"})json").toastPosition ==
+              ToastPosition::BottomRight);
+    }
+
+    SUBCASE("the empty string") {
+        CHECK(loadDocument(dir, R"json({"toastPosition": ""})json").toastPosition ==
+              ToastPosition::BottomRight);
+    }
+
+    SUBCASE("the wrong case, because the names are matched byte for byte") {
+        CHECK(loadDocument(dir, R"json({"toastPosition": "Bottom-Left"})json").toastPosition ==
+              ToastPosition::BottomRight);
+    }
+
+    SUBCASE("a value that is not a string at all") {
+        // The ordinal is the tempting thing to hand-edit in, since the settings page lists
+        // the six in enum order, and a build that accepted it would have frozen the order.
+        CHECK(loadDocument(dir, R"json({"toastPosition": 3})json").toastPosition ==
+              ToastPosition::BottomRight);
+        CHECK(loadDocument(dir, R"json({"toastPosition": ["top-left"]})json").toastPosition ==
+              ToastPosition::BottomRight);
+    }
+
+    SUBCASE("the rest of the document is read as though the key were absent") {
+        // One key this build cannot make sense of must not cost the user every other
+        // setting in the file.
+        Settings const settings = loadDocument(dir, R"json({
+  "toastPosition": "somewhere-else",
+  "pollIntervalSeconds": 45,
+  "trayColor": "blue",
+  "events": {"batteryLow": {"volume": 0.25}}
+})json");
+
+        CHECK(settings.toastPosition == ToastPosition::BottomRight);
+        CHECK(settings.pollIntervalSeconds == 45);
+        CHECK(settings.trayColor == TrayColor::Blue);
+        CHECK(settings.forEvent(NotificationEvent::BatteryLow).volume == doctest::Approx(0.25f));
+    }
+}
+
 TEST_CASE("settings: a missing events block leaves every event at its default") {
     TempDir dir;
 
@@ -737,6 +808,7 @@ TEST_CASE("settings: save then load round-trips every field") {
     written.language = LanguagePreference::Russian;
     written.trayStyle = TrayStyle::Percentage;
     written.trayColor = TrayColor::Pink;
+    written.toastPosition = ToastPosition::TopLeft;
     written.backdrop = BackdropMode::Mica;
     written.windowOpacity = 0.85f;
     written.masterVolume = 0.35f;
@@ -818,6 +890,18 @@ TEST_CASE("settings: every enumerator survives a round trip") {
             written.trayColor = value;
             REQUIRE(written.save(file));
             CHECK(Settings::load(file).trayColor == value);
+        }
+    }
+
+    SUBCASE("toast position") {
+        for (ToastPosition const value :
+             {ToastPosition::TopLeft, ToastPosition::TopCenter, ToastPosition::TopRight,
+              ToastPosition::BottomLeft, ToastPosition::BottomCenter,
+              ToastPosition::BottomRight}) {
+            Settings written;
+            written.toastPosition = value;
+            REQUIRE(written.save(file));
+            CHECK(Settings::load(file).toastPosition == value);
         }
     }
 

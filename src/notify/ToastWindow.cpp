@@ -34,8 +34,9 @@ constexpr float kTitleGap = 2.0f;
 constexpr float kEdgeGap = 12.0f;
 constexpr float kStackGap = 8.0f;
 
-// The card slides in from below. It must stay within the shadow margin, otherwise the
-// content is drawn outside the window and the first frames are clipped.
+// The card slides in from the edge it is anchored to. It must stay within the shadow
+// margin, otherwise the content is drawn outside the window and the first frames are
+// clipped -- which holds for either direction, the field being the same on all four sides.
 constexpr float kSlideDip = 20.0f;
 static_assert(kSlideDip <= ui::Metrics::shadowMargin,
               "the entrance slide is drawn inside the window and cannot exceed its margin");
@@ -104,23 +105,24 @@ void ToastWindow::place() {
     float const s = scale();
     float const margin = ui::Metrics::shadowMargin;
 
-    int const width = scaled(kCardWidth + 2.0f * margin, s);
-    int const height = scaled(m_cardHeightDip + 2.0f * margin, s);
-    int const marginPx = scaled(margin, s);
-    int const gap = scaled(kEdgeGap, s);
+    SIZE const window{scaled(kCardWidth + 2.0f * margin, s),
+                      scaled(m_cardHeightDip + 2.0f * margin, s)};
 
-    // The window is larger than the card by the transparent margin on every side, so the
-    // margin is added back to leave the *visible* card `kEdgeGap` from the corner.
-    int const x = m_workArea.right - gap - width + marginPx;
-    int const y = m_workArea.bottom - gap - height + marginPx - scaled(m_offsetDip, s);
+    // Every rule about which edge the margin comes off and which way the stack grows lives
+    // in placeToast, where it is reachable by a test.
+    ToastPlacement const placement = placeToast(m_workArea, window, scaled(margin, s),
+                                                scaled(kEdgeGap, s), scaled(m_offsetDip, s),
+                                                m_position);
+    m_slide = placement.slideDirection;
 
-    SetWindowPos(m_hwnd, HWND_TOPMOST, x, y, width, height,
+    SetWindowPos(m_hwnd, HWND_TOPMOST, placement.x, placement.y, window.cx, window.cy,
                  SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 }
 
 bool ToastWindow::show(ToastContent content,
                        std::chrono::milliseconds lifetime,
                        RECT workArea,
+                       ToastPosition position,
                        float offsetDip) {
     if (m_hwnd == nullptr) {
         CreateParams params;
@@ -143,6 +145,7 @@ bool ToastWindow::show(ToastContent content,
     m_body.setText(m_content.body);
 
     m_workArea = workArea;
+    m_position = position;
     m_offsetDip = offsetDip;
     m_cardHeightDip = layoutContent();
     place();
@@ -162,10 +165,11 @@ bool ToastWindow::show(ToastContent content,
     return true;
 }
 
-void ToastWindow::restack(float offsetDip) {
+void ToastWindow::restack(ToastPosition position, float offsetDip) {
     if (m_phase == Phase::Idle) {
         return;
     }
+    m_position = position;
     m_offsetDip = offsetDip;
     place();
 }
@@ -230,7 +234,8 @@ void ToastWindow::onPaint(ID2D1DeviceContext& context, D2D1_SIZE_F) {
     float const reveal = m_reveal.value();
     float const radius = ui::Metrics::overlayCornerRadius;
 
-    context.SetTransform(D2D1::Matrix3x2F::Translation(0.0f, (1.0f - reveal) * kSlideDip));
+    context.SetTransform(
+        D2D1::Matrix3x2F::Translation(0.0f, m_slide * (1.0f - reveal) * kSlideDip));
     // One layer for the whole card is what makes the fade a fade rather than a pile of
     // independently translucent shapes showing through each other.
     context.PushLayer(D2D1::LayerParameters1(D2D1::InfiniteRect(), nullptr,
@@ -371,8 +376,8 @@ void ToastStack::show(ToastContent content) {
     }
     std::erase(m_order, card);
 
-    // Placed at the corner; the cards already up are pushed away from it below.
-    if (!card->show(std::move(content), kLifetime, taskbarWorkArea(), 0.0f)) {
+    // Placed at the chosen edge; the cards already up are pushed away from it below.
+    if (!card->show(std::move(content), kLifetime, taskbarWorkArea(), m_position, 0.0f)) {
         return;
     }
     m_order.push_back(card);
@@ -387,6 +392,14 @@ void ToastStack::dismissAll() {
     }
 }
 
+void ToastStack::setPosition(ToastPosition position) {
+    if (m_position == position) {
+        return;
+    }
+    m_position = position;
+    restack();
+}
+
 void ToastStack::onFinished(ToastWindow* card) {
     std::erase(m_order, card);
     restack();
@@ -394,10 +407,11 @@ void ToastStack::onFinished(ToastWindow* card) {
 
 void ToastStack::restack() {
     float offset = 0.0f;
-    // Newest first: it takes the corner and everything older moves up by exactly its
-    // height, which keeps the gaps even whatever the cards' contents made them.
+    // Newest first: it takes the edge and everything older moves one card's height further
+    // from it, which keeps the gaps even whatever the cards' contents made them. The offset
+    // is a distance, not a direction -- which way it points is placeToast's business.
     for (auto card = m_order.rbegin(); card != m_order.rend(); ++card) {
-        (*card)->restack(offset);
+        (*card)->restack(m_position, offset);
         offset += (*card)->heightDip() - 2.0f * ui::Metrics::shadowMargin + kStackGap;
     }
 }

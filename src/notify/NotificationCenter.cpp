@@ -246,6 +246,9 @@ void NotificationCenter::previewSound(NotificationEvent event) {
 void NotificationCenter::applySettings(Settings const& settings) {
     m_impl->settings = settings;
     audio::AudioEngine::instance().setMasterVolume(settings.masterVolume);
+    // Through here rather than through a second listener on the store: one order of
+    // application, and one place to look when a setting does not take effect.
+    ToastStack::instance().setPosition(settings.toastPosition);
 }
 
 void NotificationCenter::invalidateSoundCache() { m_impl->clips.clear(); }

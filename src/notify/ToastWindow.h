@@ -8,6 +8,7 @@
 
 #include "core/Signal.h"
 #include "core/Win.h"
+#include "notify/ToastLayout.h"
 #include "ui/Animation.h"
 #include "ui/Drawing.h"
 #include "ui/Window.h"
@@ -41,18 +42,20 @@ public:
     ToastWindow();
     ~ToastWindow() override;
 
-    // Lays the content out, sizes the window to fit it, places it in the bottom-right of
-    // `workArea` raised by `offsetDip`, and starts the entrance animation.
+    // Lays the content out, sizes the window to fit it, places it at `position` within
+    // `workArea` and `offsetDip` away from that edge, and starts the entrance animation.
     bool show(ToastContent content,
               std::chrono::milliseconds lifetime,
               RECT workArea,
+              ToastPosition position,
               float offsetDip);
 
     // Starts the exit animation; the card reports `finished` once it is off screen.
     void dismiss();
 
-    // Moves an already-visible card, which is what happens when the one below it closes.
-    void restack(float offsetDip);
+    // Moves an already-visible card: what happens when the card between it and the edge
+    // closes, and when the user picks a different corner while it is up.
+    void restack(ToastPosition position, float offsetDip);
 
     bool idle() const noexcept;
 
@@ -92,14 +95,17 @@ private:
     bool m_tracking = false;
 
     RECT m_workArea{};
+    ToastPosition m_position = ToastPosition::BottomRight;
+    // Which way the entrance slide runs, taken from the placement so that a card always
+    // arrives from the edge it is anchored to.
+    float m_slide = 1.0f;
     float m_offsetDip = 0.0f;
     float m_cardHeightDip = 0.0f;
     float m_titleHeightDip = 0.0f;
     float m_textWidthDip = 0.0f;
 };
 
-// The visible cards, stacked upward from the corner of the work area the system's own
-// notifications use.
+// The visible cards, stacked away from whichever edge of the work area the user chose.
 //
 // The pool is deliberately small: five controllers all going flat at once must not bury
 // the screen, so a sixth card recycles the oldest rather than adding to the pile.
@@ -109,6 +115,10 @@ public:
 
     void show(ToastContent content);
     void dismissAll();
+
+    // Cards already on screen move at once. Anything less makes the setting look broken
+    // for the six seconds a card lives, which is most of the time anyone spends choosing.
+    void setPosition(ToastPosition position);
 
     // Raised when the user clicks any card. The application treats it as "open the
     // window": that is the only thing a battery notification can usefully lead to.
@@ -124,6 +134,7 @@ private:
     void onFinished(ToastWindow* card);
     void restack();
 
+    ToastPosition m_position = ToastPosition::BottomRight;
     std::array<std::unique_ptr<ToastWindow>, kSlots> m_slots;
     // Visible cards, oldest first, so recycling takes the one that has been up longest and
     // restacking knows which card sits closest to the corner.
