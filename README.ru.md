@@ -15,7 +15,7 @@
 
 [English](README.md) · **Русский**
 
-<img src="docs/images/controllers.png" width="760" alt="Страница «Геймпады» с подключённым геймпадом и уровнем заряда">
+<img src="docs/images/ru/controllers.png" width="760" alt="Страница «Геймпады» с подключённым геймпадом и уровнем заряда">
 
 </div>
 
@@ -48,9 +48,9 @@ Windows знает заряд геймпада. Просто не показыв
 
 | Звуки | История |
 |:---:|:---:|
-| <img src="docs/images/sounds.png" width="380" alt="Настройки звука для каждого события"> | <img src="docs/images/history.png" width="380" alt="График истории заряда"> |
+| <img src="docs/images/ru/sounds.png" width="380" alt="Настройки звука для каждого события"> | <img src="docs/images/ru/history.png" width="380" alt="График истории заряда"> |
 | **Параметры** | **О программе** |
-| <img src="docs/images/settings.png" width="380" alt="Страница параметров"> | <img src="docs/images/about.png" width="380" alt="Страница «О программе»"> |
+| <img src="docs/images/ru/settings.png" width="380" alt="Страница параметров"> | <img src="docs/images/ru/about.png" width="380" alt="Страница «О программе»"> |
 
 </div>
 

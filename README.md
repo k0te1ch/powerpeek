@@ -15,7 +15,7 @@
 
 **English** · [Русский](README.ru.md)
 
-<img src="docs/images/controllers.png" width="760" alt="The Controllers page, showing a connected pad and its charge level">
+<img src="docs/images/en/controllers.png" width="760" alt="The Controllers page, showing a connected pad and its charge level">
 
 </div>
 
@@ -49,9 +49,9 @@ no network code.
 
 | Sounds | History |
 |:---:|:---:|
-| <img src="docs/images/sounds.png" width="380" alt="Per-event sound settings"> | <img src="docs/images/history.png" width="380" alt="Battery history chart"> |
+| <img src="docs/images/en/sounds.png" width="380" alt="Per-event sound settings"> | <img src="docs/images/en/history.png" width="380" alt="Battery history chart"> |
 | **Settings** | **About** |
-| <img src="docs/images/settings.png" width="380" alt="Settings page"> | <img src="docs/images/about.png" width="380" alt="The About page"> |
+| <img src="docs/images/en/settings.png" width="380" alt="Settings page"> | <img src="docs/images/en/about.png" width="380" alt="The About page"> |
 
 </div>
 
