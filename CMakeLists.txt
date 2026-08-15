@@ -35,6 +35,11 @@ include(WindowsSdk)
 
 option(PP_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
+# Off by default because it is the only part of the build that reaches the network: the
+# test binary needs doctest, fetched at configure time. A plain build of the application
+# stays dependency-free and works offline, which is the point.
+option(PP_BUILD_TESTS "Build the unit tests" OFF)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -47,18 +52,10 @@ if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.29)
     set(CMAKE_CXX20_EXTENSION_COMPILE_OPTION "-std:c++20")
 endif()
 
-# Single self-contained executable: static CRT means no VC++ redistributable to ship.
+# Single self-contained executable: static CRT means no VC++ redistributable to ship. Set
+# as a directory variable rather than per target, so the test binary cannot end up on the
+# dynamic CRT and then fail to link against the static one everything else uses.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-
-# Sources are globbed so that adding a file to src/ needs no CMake edit. CONFIGURE_DEPENDS
-# makes the generator re-run the glob when the directory contents change.
-file(GLOB_RECURSE PP_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h")
-
-add_executable(PowerPeek WIN32
-    ${PP_SOURCES}
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/app.rc")
 
 # app.rc includes this; CMake passes target_include_directories to rc.exe as well, which
 # is how the generated header is found from the source tree.
@@ -67,18 +64,23 @@ configure_file(
     "${CMAKE_CURRENT_BINARY_DIR}/generated/pp_version.h"
     @ONLY)
 
-target_include_directories(PowerPeek PRIVATE
+# Everything compiled from this repository is compiled the same way. Held on one interface
+# target rather than repeated per target, because a test binary built with different
+# language settings than the code under test is testing something else.
+add_library(pp_compile_settings INTERFACE)
+
+target_include_directories(pp_compile_settings INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
-target_compile_options(PowerPeek PRIVATE
+target_compile_options(pp_compile_settings INTERFACE
     /utf-8 /permissive- /EHsc /bigobj
     /Zc:__cplusplus /Zc:inline /Zc:throwingNew /Zc:externConstexpr
     /diagnostics:caret
     $<$<CONFIG:Debug>:/JMC>
     $<$<NOT:$<CONFIG:Debug>>:/Gy /Gw /Oi>)
 
-target_compile_definitions(PowerPeek PRIVATE
+target_compile_definitions(pp_compile_settings INTERFACE
     UNICODE
     _UNICODE
     STRICT
@@ -97,10 +99,55 @@ target_compile_definitions(PowerPeek PRIVATE
     PP_VERSION_MINOR=${PROJECT_VERSION_MINOR}
     PP_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
-pp_set_warnings(PowerPeek ${PP_WARNINGS_AS_ERRORS})
-pp_add_cppwinrt_includes(PowerPeek)
+# The layer with no window, no device and no message loop: parsing, persistence, the rules
+# that decide when to notify, and the easing maths. It is a library rather than part of the
+# executable so that a test binary can link it without spinning up Direct2D, XAudio2 or a
+# window -- and so that "this part carries no UI", which the architecture notes claim, is a
+# fact the build enforces rather than a promise a later commit can quietly break.
+#
+# Listed rather than globbed, unlike the rest of the sources: the boundary is the whole
+# point, so a file joins this side of it only deliberately.
+set(PP_CORE_SOURCES
+    core/AppPaths.cpp
+    core/Json.cpp
+    core/Logger.cpp
+    core/Settings.cpp
+    core/Strings.cpp
+    core/Win.cpp
+    battery/BatteryHistory.cpp
+    battery/ControllerInfo.cpp
+    battery/EventDetector.cpp
+    audio/WavReader.cpp
+    ui/Animation.cpp)
+list(TRANSFORM PP_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/src/")
+
+add_library(PowerPeekCore STATIC ${PP_CORE_SOURCES})
+
+target_link_libraries(PowerPeekCore PUBLIC pp_compile_settings)
+target_link_libraries(PowerPeekCore PRIVATE
+    shell32     # SHGetKnownFolderPath, for %LOCALAPPDATA%
+    ole32)      # CoTaskMemFree, which frees what that returns
+
+pp_set_warnings(PowerPeekCore ${PP_WARNINGS_AS_ERRORS})
+pp_add_cppwinrt_includes(PowerPeekCore)
+
+# The rest is globbed so that adding a file to src/ needs no CMake edit. CONFIGURE_DEPENDS
+# makes the generator re-run the glob when the directory contents change. The core sources
+# are then removed again: they are already compiled into PowerPeekCore, and compiling them
+# a second time here would be a second definition of every symbol in them.
+file(GLOB_RECURSE PP_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h")
+list(REMOVE_ITEM PP_SOURCES ${PP_CORE_SOURCES})
+
+add_executable(PowerPeek WIN32
+    ${PP_SOURCES}
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/app.rc")
 
 target_link_libraries(PowerPeek PRIVATE
+    pp_compile_settings
+    PowerPeekCore
+
     d2d1            # Direct2D 1.3 rendering
     dwrite          # DirectWrite text layout
     d3d11           # D3D11 device backing the Direct2D device
@@ -125,12 +172,21 @@ target_link_libraries(PowerPeek PRIVATE
     # contract for a desktop application.
     windowsapp)     # C++/WinRT projection: WinRT activation and IInspectable plumbing
 
+pp_set_warnings(PowerPeek ${PP_WARNINGS_AS_ERRORS})
+pp_add_cppwinrt_includes(PowerPeek)
+
 # The manifest lives in app.rc; stop the linker from generating a second one.
 target_link_options(PowerPeek PRIVATE /MANIFEST:NO /ENTRY:wWinMainCRTStartup)
 
 set_target_properties(PowerPeek PROPERTIES OUTPUT_NAME "PowerPeek")
 
 # Keep the source tree layout in the IDE.
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "src" FILES ${PP_SOURCES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "src"
+    FILES ${PP_SOURCES} ${PP_CORE_SOURCES})
 
 install(TARGETS PowerPeek RUNTIME DESTINATION .)
+
+if(PP_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

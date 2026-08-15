@@ -10,7 +10,8 @@ Conventional Commit: feat: / fix: / docs: / refactor: / perf: / test: / build: /
 ## Checklist
 
 - [ ] `tools\build.bat release` builds with no warnings
+- [ ] `tools\test.bat` passes, and behaviour changed under `PowerPeekCore` brought a test with it
 - [ ] New user-visible strings are in `src/core/Strings.h`, both English and Russian
-- [ ] No new external dependency
+- [ ] No new external dependency in the application
 - [ ] The interface does not name an API, registry key or file format
 - [ ] Tried it on a real controller, or explained below why that was not possible
