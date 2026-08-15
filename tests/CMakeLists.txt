@@ -10,13 +10,19 @@ include(FetchContent)
 # test binary. It is a header-only framework, so nothing it brings ends up in the shipped
 # executable. Pinned to an exact tag rather than a branch: a test suite that changes
 # behaviour because an upstream default moved is worse than no test suite.
+#
+# The tag has to be one whose own cmake_minimum_required is 3.10 or newer. Older doctest
+# releases ask for 2.8, which a recent CMake refuses outright rather than warning about --
+# and since a developer machine usually runs the CMake bundled with Visual Studio while the
+# build agent runs a newer one, that shows up as a build which passes locally and fails in
+# CI with an error about a project nobody in this repository wrote.
 set(DOCTEST_WITH_TESTS OFF CACHE BOOL "" FORCE)
 set(DOCTEST_WITH_MAIN_IN_STATIC_LIB OFF CACHE BOOL "" FORCE)
 set(DOCTEST_NO_INSTALL ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(doctest
     GIT_REPOSITORY https://github.com/doctest/doctest.git
-    GIT_TAG v2.4.11
+    GIT_TAG v2.5.3
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(doctest)
 
