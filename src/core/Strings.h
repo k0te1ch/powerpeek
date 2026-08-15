@@ -153,6 +153,10 @@ enum class Text {
     Minimise,
     Maximise,
     Restore,
+
+    // Not a string: how many there are. The table in Strings.cpp is checked against this at
+    // compile time, so nothing depends on remembering which enumerator happens to be last.
+    Count,
 };
 
 // Resolves LanguagePreference::System against the user's UI language once, then serves
