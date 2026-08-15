@@ -14,6 +14,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A job of its own rather than a step on the build below, so that a pull request reports
+  # "the code is broken" and "the code is wrong" as two separate failures, and so that both
+  # can be required independently before a merge. It builds only PowerPeekCore and the test
+  # binary, not the UI, which is why running it twice over costs little.
+  test:
+    name: Unit tests (x64)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same script a developer runs, for the same reason vsenv.bat is shared: a test
+      # that passes here and fails locally, or the reverse, is a bug in the harness rather
+      # than in the code, and one script cannot drift from itself. The JUnit report is what
+      # makes a failure readable in the run summary without downloading anything.
+      - name: Build and run the unit tests
+        shell: cmd
+        run: call tools\test.bat --output-junit "%CD%\build\tests\junit.xml" || exit /b 1
+
+      - name: Upload the test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PowerPeek-test-report
+          path: build/tests/junit.xml
+          if-no-files-found: warn
+
   build:
     name: Build (x64, RelWithDebInfo)
     runs-on: windows-latest
