@@ -26,7 +26,7 @@
 namespace peek {
 namespace {
 
-constexpr wchar_t kHubClassName[] = L"XbsHubWindow";
+constexpr wchar_t kHubClassName[] = L"PowerPeek.HubWindow";
 
 // The controller thread's "something moved" ping. WM_APP+0x10 and +0x11 already belong to
 // the tray icon and the flyouts, and WM_APP+0x1F0 to D2DWindow's frame pump.
