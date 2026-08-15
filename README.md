@@ -183,6 +183,22 @@ nonsense, which is why the setting is off by default. Xbox controllers are what 
 tested for.
 </details>
 
+## Roadmap
+
+Today it reads game controllers — pads, wheels and sticks. The point of the app is broader: the
+battery of **anything you connect to the machine**. In order:
+
+- **Bluetooth headphones and earbuds**, from the same device property Windows Settings itself shows.
+- **Mice, keyboards, pens and trackers** over Bluetooth LE, read on connect and then by notification,
+  never by polling — polling would wake the device and drain the battery it is reporting.
+- **Wired and radio peripherals** that publish the standard HID battery usage.
+- **Vendor protocols**, one vendor at a time, for devices that publish nothing standard.
+
+One caveat stated up front, because it will not go away: plenty of peripherals report no battery at
+all through any documented route. On the development machine not one of 36 HID collections did —
+headset, two mice, keyboard and drawing tablet included. A device whose protocol is unknown will not
+show a level, and this README will keep saying so.
+
 ## Contributing
 
 Issues and pull requests are welcome.
