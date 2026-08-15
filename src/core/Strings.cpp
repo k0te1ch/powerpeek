@@ -197,10 +197,30 @@ constexpr bool tableIsComplete() {
     return true;
 }
 
-static_assert(std::size(kTable) == static_cast<std::size_t>(Text::Restore) + 1,
+// Entry is an aggregate, so a row written with one language -- {Text::Foo, L"English"} --
+// compiles, and leaves the other column null. The size and order checks above both still
+// pass, because the row is there and it is in the right place; only text() finds out, by
+// handing a null pointer to std::wstring_view, which is undefined behaviour rather than a
+// blank label. Both READMEs and CONTRIBUTING promise a missing translation is a compile
+// error, and this is the half of that promise that was missing.
+constexpr bool everyRowSpeaksBothLanguages() {
+    for (Entry const& entry : kTable) {
+        if (entry.en == nullptr || entry.ru == nullptr) {
+            return false;
+        }
+        if (*entry.en == L'\0' || *entry.ru == L'\0') {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(std::size(kTable) == static_cast<std::size_t>(Text::Count),
               "every Text needs exactly one row in kTable");
 static_assert(tableIsComplete(),
               "kTable rows must be in Text order, so a lookup is a plain index");
+static_assert(everyRowSpeaksBothLanguages(),
+              "every kTable row needs a non-empty English and Russian string");
 
 bool g_useRussian = false;
 

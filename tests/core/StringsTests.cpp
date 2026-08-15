@@ -34,7 +34,7 @@ using peek::text;
 
 // Derived the way Strings.cpp derives it for its own static_assert, so a new enumerator joins
 // every sweep below without anyone editing a count.
-constexpr std::size_t kTextCount = static_cast<std::size_t>(Text::Restore) + 1;
+constexpr std::size_t kTextCount = static_cast<std::size_t>(Text::Count);
 
 Text textAt(std::size_t index) {
     return static_cast<Text>(static_cast<int>(index));
