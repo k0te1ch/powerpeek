@@ -93,9 +93,29 @@ std::wstring describeHresult(HRESULT hr) {
         LocalFree(buffer);
     }
 
-    while (!text.empty() && (text.back() == L'\r' || text.back() == L'\n' || text.back() == L' ' ||
-                             text.back() == L'.')) {
+    // FormatMessage hands back a whole sentence, "...\r\n" and all, and this text then
+    // goes inside one -- in brackets, after a code, usually mid-line in a log. The line
+    // break and the full stop closing the system's own sentence have to go.
+    //
+    // Only those, though. Popping every trailing dot took punctuation the message itself
+    // owns: a message ending in an ellipsis came back with a stray "..", and one made of
+    // two sentences lost the stop between them and the bracket. So: whitespace in full,
+    // then a single period, and not one that is part of a longer run.
+    auto const isTrailingSpace = [](wchar_t c) {
+        return c == L'\r' || c == L'\n' || c == L'\t' || c == L' ';
+    };
+    while (!text.empty() && isTrailingSpace(text.back())) {
         text.pop_back();
+    }
+    if (!text.empty() && text.back() == L'.' &&
+        (text.size() == 1 || text[text.size() - 2] != L'.')) {
+        text.pop_back();
+        // And again underneath it. Several rows of the message table put a blank in front of
+        // their own full stop, and taking the stop away exposes it against the bracket -- the
+        // old single pass never showed that up, because it went on popping through the space.
+        while (!text.empty() && isTrailingSpace(text.back())) {
+            text.pop_back();
+        }
     }
 
     auto const code = static_cast<std::uint32_t>(hr);
