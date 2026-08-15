@@ -23,6 +23,7 @@
 #include "ui/Animation.h"
 
 #include <chrono>
+#include <cmath>
 
 namespace {
 
@@ -49,11 +50,62 @@ constexpr NamedCurve kAllCurves[] = {
     {Easing::FadeOut, "FadeOut"},
 };
 
-// Away from both ends, where the curves are distinguishable and the fixed-iteration solve
-// behind them has converged.
+// Away from both ends, where the curves are furthest apart in value and so easiest to tell
+// from one another. The bisection-guarded solve behind them converges across the whole
+// interval, so this is about picking the curves apart rather than about avoiding the solve.
 constexpr float kMidSamples[] = {0.1f, 0.25f, 0.5f, 0.75f, 0.9f};
 constexpr float kMirrorSamples[] = {0.25f, 0.5f, 0.75f};
 constexpr float kLinearSamples[] = {0.05f, 0.1f, 0.25f, 0.4f, 0.5f, 0.6f, 0.75f, 0.9f, 0.95f};
+
+// The closed forms behind the two Bezier curves the application ships. Both share
+// y(t) = 3t^2 - 2t^3; the entrance control points give x(t) = t^3 and the exit points give
+// x(t) = 1 - (1 - t)^3, so inverting either is one cube root rather than an iteration. Read the
+// control points off Animation.cpp and these fall out of the same two polynomials, which is what
+// makes them an expectation and not a second copy of the thing under test.
+double entranceExact(double progress) {
+    double const t = std::cbrt(progress);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+double exitExact(double progress) {
+    double const t = 1.0 - std::cbrt(1.0 - progress);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+// Both ends and the middle in one set, because the two curves are difficult in opposite
+// places: the entrance curve's x(t) is flat at the origin and the exit curve's is flat at one,
+// and inverting a function whose slope has gone is where a solve fails. The set stops at 1e-4
+// rather than reaching further down -- the solve leaves on an absolute tolerance of 1e-6 in x,
+// so a progress of about that size is already satisfied by the starting guess and would pin the
+// tolerance rather than the curve.
+constexpr float kClosedFormSamples[] = {1e-4f, 1e-3f, 0.01f, 0.05f, 0.2f, 0.5f, 0.8f,
+                                        0.95f, 0.99f, 0.999f, 0.9999f};
+
+// The solve leaves when x is within 1e-6 of the progress asked for, and that residue reaches y
+// multiplied by dy/dx -- which the entrance curve pushes past forty near the origin and the exit
+// curve past forty near one. Hence an expectation pinned at 1e-4 rather than at the solve's own
+// tolerance. doctest adds one to the compared magnitude before scaling, so this reads as roughly
+// 1e-4 absolute for the values near zero and 2e-4 for those near one; the shipped solve meets
+// both with about a factor of two in hand.
+constexpr double kClosedFormEpsilon = 1e-4;
+
+// Hard against both ends, where linear's own x(t) = 3t^2 - 2t^3 is flat and an inversion has
+// least to work with.
+constexpr float kLinearEndSamples[] = {1e-5f, 1e-4f, 1e-3f, 0.01f,
+                                       0.99f, 0.999f, 0.9999f, 0.99999f};
+
+// Linear needs none of that headroom: its x and y are the same polynomial, so the value handed
+// back is the x the solve stopped on and the identity holds to the solve's own tolerance
+// wherever it is sampled -- an order of magnitude tighter than the Bezier inversions can promise.
+constexpr double kIdentityEpsilon = 1e-5;
+
+// A finer sweep than the interval and direction cases use, because what this one looks for is a
+// step rather than a wrong value. The largest step any of the three curves genuinely takes at
+// this resolution is the entrance curve's first, a shade under 0.028, and the exit curve's last
+// is the mirror of it. The bound leaves close to half as much again on top of that, and still
+// sits well under the jump an abandoned iteration leaves behind.
+constexpr int kSweepSteps = 1024;
+constexpr float kMaxSweepStep = 0.04f;
 
 // Long enough that the animation is unambiguously still in flight at the sampled frame times
 // whatever the scheduler does between two adjacent statements.
@@ -215,6 +267,78 @@ TEST_CASE("ease: every curve has all but reached 1 just before the end") {
     for (auto const& entry : kAllCurves) {
         CAPTURE(entry.name);
         CHECK(ease(entry.curve, 0.9999f) > 0.99f);
+    }
+}
+
+TEST_CASE("ease: the entrance curve matches its closed form in the first frames") {
+    // This is the curve behind Standard, Entrance and FadeIn, which is to say behind nearly
+    // every animation the window runs, and its x(t) is t cubed: the function the solve has to
+    // invert is at its flattest exactly where an animation begins. A solve that cannot get a
+    // foothold there hands back a value from further along the curve than the frame has earned,
+    // and what that looks like is a fade or a slide that opens with a jump and only then eases.
+    // It is in the first frames, on every entrance, so it is the most-watched motion there is.
+    //
+    // Small progress values carry the case; the mid-range ones are here so a failure says
+    // whether the whole curve moved or only its opening.
+    for (float const sample : kClosedFormSamples) {
+        CAPTURE(sample);
+        CHECK(ease(Easing::Entrance, sample) ==
+              doctest::Approx(entranceExact(sample)).epsilon(kClosedFormEpsilon));
+    }
+}
+
+TEST_CASE("ease: the exit curve matches its closed form in the last frames") {
+    // The same failure reflected. The exit control points give x(t) = 1 - (1 - t)^3, flat as the
+    // progress approaches one, so this curve's difficult frames are the ones that finish a
+    // dismissal rather than the ones that start it -- and a toast disappearing is a motion the
+    // user is looking straight at. The mirror case above ties the two curves to each other,
+    // which a solve wrong in matching ways at both ends would still satisfy; this ties this one
+    // to arithmetic instead.
+    for (float const sample : kClosedFormSamples) {
+        CAPTURE(sample);
+        CHECK(ease(Easing::Exit, sample) ==
+              doctest::Approx(exitExact(sample)).epsilon(kClosedFormEpsilon));
+    }
+}
+
+TEST_CASE("ease: linear is the identity at the ends as well as the middle") {
+    // Linear's x and y are one polynomial, so the number returned is literally the x the solve
+    // settled on: the identity is not an approximation of a curve but a direct readout of how
+    // close the solve got, and it therefore holds to the solve's own tolerance wherever it is
+    // sampled. That makes both ends assertable rather than a region to keep clear of, and the
+    // ends are the point -- x(t) is flat at each of them, which is where an inversion that runs
+    // out of room lands furthest from the root. Linear is what the code asks for when a value
+    // has to track time exactly, so drift here is motion running ahead of its own clock.
+    for (float const sample : kLinearEndSamples) {
+        CAPTURE(sample);
+        CHECK(ease(Easing::Linear, sample) == doctest::Approx(sample).epsilon(kIdentityEpsilon));
+    }
+}
+
+TEST_CASE("ease: no curve steps between adjacent frames") {
+    // The shape of a bad solve is a discontinuity rather than a bias, and this is the case that
+    // names it. Every sampled progress is inverted from scratch with nothing tying one frame's
+    // answer to the next, so an inversion that converges for some inputs and gives up for others
+    // draws a curve smooth in places and stepped in between. The step is what the eye catches:
+    // half a percent of error either side of it goes unnoticed and the jump does not.
+    //
+    // Sampling eight times as finely as the interval and direction cases do is what makes the
+    // bound meaningful, and it also reports the progress a failure happened at closely enough to
+    // say which part of the curve broke. Those two checks are repeated here for that reason
+    // rather than because they are missing.
+    for (auto const& entry : kAllCurves) {
+        CAPTURE(entry.name);
+        float previous = 0.0f;
+        for (int i = 0; i <= kSweepSteps; ++i) {
+            float const progress = static_cast<float>(i) / static_cast<float>(kSweepSteps);
+            CAPTURE(progress);
+            float const y = ease(entry.curve, progress);
+            CHECK(y >= 0.0f);
+            CHECK(y <= 1.0f);
+            CHECK(y >= previous);
+            CHECK(y - previous <= kMaxSweepStep);
+            previous = y;
+        }
     }
 }
 

@@ -1,9 +1,18 @@
 #include "ui/Animation.h"
 
-#include <algorithm>
+#include <cmath>
 
 namespace peek::ui {
 namespace {
+
+// A millionth of a curve whose whole range is 0 to 1: far below both the precision of the
+// float carrying it and the size of the pixel it ends up moving.
+//
+// The iteration count is a backstop rather than a budget. Bisection alone reaches that
+// tolerance in twenty halvings, and Newton takes over long before then, so the loop leaves
+// on the tolerance and the count only bounds a curve that misbehaves everywhere.
+constexpr float kSolveTolerance = 1e-6f;
+constexpr int kSolveIterations = 24;
 
 // A cubic Bezier with P0 = (0,0) and P3 = (1,1), solved for y at a given x.
 struct CubicBezier {
@@ -19,15 +28,43 @@ struct CubicBezier {
         return 3.0f * mt * mt * a + 6.0f * mt * t * (b - a) + 3.0f * t * t * (1.0f - b);
     }
 
+    // Inverts x(t) = progress, then reads y off the t that solved it.
+    //
+    // Newton alone is not enough here, and the curve that breaks it is the one used most.
+    // The Fluent entrance is (0,0,0,1), so its x(t) is t cubed: the slope near zero is flat
+    // enough that the first step either lands outside the interval or is abandoned by a
+    // small-slope test, and six unguarded iterations then finish nowhere near the root. Its
+    // opening frames came out wrong in both directions -- measured against the closed form, a
+    // tenth of a percent into the duration the curve stood at 0.056 where it belonged at
+    // 0.028, and a hundredth of a percent in it stood at 3e-08 where it belonged at 0.0063.
+    // Twice too far along, then nowhere at all: that is the kink, and it sits in the first
+    // frames of every entrance the application draws.
+    //
+    // x(t) is non-decreasing on [0,1] for all three curves, so the root is bracketed from
+    // the outset and bisection can always finish what Newton starts. Together they keep
+    // Newton's speed everywhere it behaves and its convergence where it does not.
     float operator()(float progress) const noexcept {
+        float lower = 0.0f;
+        float upper = 1.0f;
         float t = progress;
-        for (int i = 0; i < 6; ++i) {
+
+        for (int i = 0; i < kSolveIterations; ++i) {
             float const error = curve(x1, x2, t) - progress;
-            float const d = slope(x1, x2, t);
-            if (d < 1e-6f) {
+            if (std::fabs(error) <= kSolveTolerance) {
                 break;
             }
-            t = std::clamp(t - error / d, 0.0f, 1.0f);
+            if (error > 0.0f) {
+                upper = t;
+            } else {
+                lower = t;
+            }
+
+            float const d = slope(x1, x2, t);
+            float const candidate = t - error / d;
+            // The step is taken only when it stays inside the bracket, which is also what
+            // rejects the infinity a zero slope produces and the NaN a zero over zero does.
+            t = (d > 0.0f && candidate > lower && candidate < upper) ? candidate
+                                                                    : 0.5f * (lower + upper);
         }
         return curve(y1, y2, t);
     }
