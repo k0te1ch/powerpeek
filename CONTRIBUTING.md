@@ -59,6 +59,20 @@ git switch -c feat/short-description
 Name the branch for the change: `feat/`, `fix/`, `docs/`, `refactor/`, `chore/`. One branch per
 change, and a new change always starts from a freshly pulled `main` rather than from the last branch.
 
+**Commits have to be signed.** `main` requires it, and an unsigned commit does not fail loudly — the
+pull request simply refuses to merge with everything else green, which is a confusing half hour if you
+do not know to look. SSH signing needs no new key: add the public half of the key you already push
+with to GitHub a second time, choosing **Signing Key** rather than Authentication Key, then
+
+```bash
+git config gpg.format ssh
+git config user.signingkey ~/.ssh/id_ed25519.pub
+git config commit.gpgsign true
+```
+
+Those are repository-local on purpose, so nothing changes for your other work. If you have already
+made unsigned commits on the branch, `git rebase -f --gpg-sign main` re-signs them in place.
+
 Merge with **squash**, which is why the pull request *title* carries the Conventional Commit prefix:
 that title becomes the single commit on `main`, and release-please reads it to decide the next version.
 Delete the branch afterwards.
