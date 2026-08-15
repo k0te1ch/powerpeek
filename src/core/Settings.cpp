@@ -23,6 +23,11 @@ constexpr int kMinPollSeconds = 5;
 constexpr int kMaxPollSeconds = 3600;
 constexpr int kMinThresholdPercent = 1;
 constexpr int kMaxThresholdPercent = 95;
+// The low threshold has to leave a percent underneath it for the critical one to sit in.
+// Without that floor the two collapse onto each other at the bottom of the band: a
+// hand-edited low of 1 drags critical down to 1 as well, and the low-battery event then
+// never fires for anyone -- the critical alert reaches every reading first.
+constexpr int kMinLowThresholdPercent = kMinThresholdPercent + 1;
 constexpr int kMaxCooldownMinutes = 24 * 60;
 constexpr int kMinRetentionDays = 1;
 constexpr int kMaxRetentionDays = 365;
@@ -268,7 +273,7 @@ Settings Settings::load(std::filesystem::path const& file) {
                    kMinPollSeconds, kMaxPollSeconds);
     settings.lowThresholdPercent =
         std::clamp(root["lowThresholdPercent"].asInt(settings.lowThresholdPercent),
-                   kMinThresholdPercent, kMaxThresholdPercent);
+                   kMinLowThresholdPercent, kMaxThresholdPercent);
     settings.criticalThresholdPercent =
         std::clamp(root["criticalThresholdPercent"].asInt(settings.criticalThresholdPercent),
                    kMinThresholdPercent, kMaxThresholdPercent);
