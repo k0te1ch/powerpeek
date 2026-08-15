@@ -28,7 +28,7 @@ std::wstring widen(std::string_view utf8) {
     // to is -1 -- which these functions read as "the string is null-terminated". A bounded
     // conversion would become a scan off the end of a buffer this function does not own.
     if (utf8.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
-        reportToDebugger(L"xbs: refusing to widen a string longer than INT_MAX\n");
+        reportToDebugger(L"PowerPeek: refusing to widen a string longer than INT_MAX\n");
         return {};
     }
 
@@ -39,7 +39,7 @@ std::wstring widen(std::string_view utf8) {
     if (needed <= 0) {
         // Without MB_ERR_INVALID_CHARS malformed UTF-8 is replaced with U+FFFD instead of
         // failing, so a zero here means the arguments were rejected outright.
-        reportToDebugger(L"xbs: MultiByteToWideChar rejected a UTF-8 string\n");
+        reportToDebugger(L"PowerPeek: MultiByteToWideChar rejected a UTF-8 string\n");
         return {};
     }
 
@@ -55,7 +55,7 @@ std::string narrow(std::wstring_view utf16) {
 
     // Same trap as widen, from the other direction.
     if (utf16.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
-        reportToDebugger(L"xbs: refusing to narrow a string longer than INT_MAX\n");
+        reportToDebugger(L"PowerPeek: refusing to narrow a string longer than INT_MAX\n");
         return {};
     }
 
@@ -65,7 +65,7 @@ std::string narrow(std::wstring_view utf16) {
     int const needed =
         WideCharToMultiByte(CP_UTF8, 0, utf16.data(), length, nullptr, 0, nullptr, nullptr);
     if (needed <= 0) {
-        reportToDebugger(L"xbs: WideCharToMultiByte rejected a UTF-16 string\n");
+        reportToDebugger(L"PowerPeek: WideCharToMultiByte rejected a UTF-16 string\n");
         return {};
     }
 
