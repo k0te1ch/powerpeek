@@ -45,8 +45,10 @@ set "PP_VSENV_READY=1"
 rem The CMake and Ninja bundled with Visual Studio are newer than most standalone
 rem installs and always match the toolset, so prefer them when they are there.
 set "PP_CMAKE=%VSPATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+set "PP_CTEST=%VSPATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe"
 set "PP_NINJA=%VSPATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
 if not exist "%PP_CMAKE%" set "PP_CMAKE=cmake"
+if not exist "%PP_CTEST%" set "PP_CTEST=ctest"
 if not exist "%PP_NINJA%" set "PP_NINJA=ninja"
 exit /b 0
 
