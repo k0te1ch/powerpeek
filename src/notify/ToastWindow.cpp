@@ -14,7 +14,7 @@ namespace {
 
 using namespace std::chrono_literals;
 
-constexpr wchar_t kToastClass[] = L"XBS.ToastWindow";
+constexpr wchar_t kToastClass[] = L"PowerPeek.ToastWindow";
 
 // Posted to the card after a monitor change so that it re-places itself: the base window
 // answers WM_DPICHANGED by moving to the rectangle the system suggests, which is not

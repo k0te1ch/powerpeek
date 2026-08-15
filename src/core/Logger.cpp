@@ -62,7 +62,7 @@ void writeBytesLocked(State& s, std::string_view bytes) {
 
     DWORD written = 0;
     if (!WriteFile(s.file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr)) {
-        reportToDebugger(std::format(L"xbs: writing to the log file failed ({}); logging to "
+        reportToDebugger(std::format(L"PowerPeek: writing to the log file failed ({}); logging to "
                                      L"the debugger only from now on",
                                      lastErrorText()));
         closeLocked(s);
@@ -78,8 +78,8 @@ void openLocked(State& s) {
                          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                          OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (s.file == INVALID_HANDLE_VALUE) {
-        reportToDebugger(
-            std::format(L"xbs: cannot open log file {} ({})", s.path.wstring(), lastErrorText()));
+        reportToDebugger(std::format(L"PowerPeek: cannot open log file {} ({})", s.path.wstring(),
+                                     lastErrorText()));
         s.written = 0;
         return;
     }
@@ -99,7 +99,8 @@ void rotateLocked(State& s) {
     std::filesystem::path aside = s.path;
     aside += L".1";
     if (!MoveFileExW(s.path.c_str(), aside.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        reportToDebugger(std::format(L"xbs: cannot rotate the log file ({}); it will keep growing",
+        reportToDebugger(std::format(L"PowerPeek: cannot rotate the log file ({}); it will keep "
+                                     L"growing",
                                      lastErrorText()));
     }
 
@@ -121,7 +122,7 @@ void open(std::filesystem::path const& file) {
         std::error_code ec;
         std::filesystem::create_directories(file.parent_path(), ec);
         if (ec) {
-            reportToDebugger(std::format(L"xbs: cannot create the log directory {} ({})",
+            reportToDebugger(std::format(L"PowerPeek: cannot create the log directory {} ({})",
                                          file.parent_path().wstring(),
                                          describeHresult(HRESULT_FROM_WIN32(
                                              static_cast<DWORD>(ec.value())))));

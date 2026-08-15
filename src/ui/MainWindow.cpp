@@ -226,7 +226,7 @@ bool MainWindow::create(Dependencies dependencies) {
     m_impl->deps = std::move(dependencies);
 
     CreateParams params;
-    params.className = L"XbsMainWindow";
+    params.className = L"PowerPeek.MainWindow";
     params.title = std::wstring(text(Text::AppName));
     params.initialSizeDip = {960, 700};
     params.minimumSizeDip = {560, 460};
