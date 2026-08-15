@@ -332,6 +332,59 @@ TEST_CASE("batteryHistory: a level outside 0..100 in the file is clamped") {
     CHECK(level(second[0]) == 0);
 }
 
+TEST_CASE("batteryHistory: the duplicate check compares against the newest reading, not the "
+          "last line") {
+    TempDir dir;
+    std::filesystem::path const file = dir.file(L"history.jsonl");
+    Clock::time_point const anchor = testAnchor();
+
+    // Written newest first, which is the shape the load sorts out. What matters is that the
+    // last line in the file is not the newest sample -- so seeding the duplicate check while
+    // reading, before the sort, picks up the wrong one.
+    writeLog(file, {logLine("pad-1", 80, "discharging", anchor + hours{2}),
+                    logLine("pad-1", 90, "discharging", anchor + hours{1})});
+
+    BatteryHistory history{file};
+    history.setRetention(kAllHistory);
+
+    ControllerInfo controller = makeController(L"pad-1", 80);
+    controller.lastUpdate = anchor + hours{3};
+    history.record(controller);
+
+    // 80% is what the pad last actually read, so this is a duplicate and costs no line.
+    // Compared against the file's last line -- 90% -- it looks like a change instead, and the
+    // log grows a reading that never happened.
+    CHECK(readLines(file).size() == 2u);
+    CHECK(history.samplesFor(L"pad-1").size() == 2u);
+}
+
+TEST_CASE("batteryHistory: a reading stamped before one already held keeps the order") {
+    TempDir dir;
+    std::filesystem::path const file = dir.file(L"history.jsonl");
+    Clock::time_point const anchor = testAnchor();
+
+    writeLog(file, {logLine("pad-1", 90, "discharging", anchor + hours{2})});
+
+    BatteryHistory history{file};
+    history.setRetention(kAllHistory);
+
+    // The clock can move backwards -- an NTP correction, or the user setting it -- and the
+    // stamp comes from whenever the monitor last saw the pad, not from this moment.
+    ControllerInfo controller = makeController(L"pad-1", 85);
+    controller.lastUpdate = anchor + hours{1};
+    history.record(controller);
+
+    std::vector<HistorySample> const samples = history.samplesFor(L"pad-1");
+    REQUIRE(samples.size() == 2u);
+
+    // Appending blindly puts the older reading last, and the drain estimate reads consecutive
+    // samples as a line through time: an inverted pair does not look untidy, it reverses the
+    // slope of that segment.
+    CHECK(samples[0].when < samples[1].when);
+    CHECK(level(samples[0]) == 85);
+    CHECK(level(samples[1]) == 90);
+}
+
 TEST_CASE("batteryHistory: a reading is only appended when the level or the charge state "
           "changed") {
     TempDir dir;
