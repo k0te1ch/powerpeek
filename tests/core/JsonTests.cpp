@@ -804,6 +804,62 @@ TEST_CASE("json: asInt rounds and refuses what will not fit an int") {
     CHECK(Value(-std::numeric_limits<double>::infinity()).asInt(7) == 7);
 }
 
+TEST_CASE("json: asFloat refuses what will not fit a float") {
+    // The same undefined cast as in asInt, on a range that is far easier to leave: 1e39 is an
+    // unremarkable double, a legal JSON number, and exactly what a mistyped exponent in a
+    // hand-edited settings file produces. The volume or opacity being read has to keep its
+    // default, which is what every other bad value in that file already does.
+    CHECK(parse("1e39").kind() == Value::Kind::Number);
+    CHECK(parse("1e39").asFloat(0.25f) == doctest::Approx(0.25f));
+
+    // The guard is symmetric, because a number is no more representable for being negative.
+    CHECK(parse("-1e39").asFloat(0.25f) == doctest::Approx(0.25f));
+
+    // Refusing anything merely large would be as bad as refusing nothing, so the ends of the
+    // range are fenced where the conversion actually gives out.
+    CHECK(parse("3.4e38").asFloat(0.25f) == doctest::Approx(3.4e38f));
+    CHECK(parse("-3.4e38").asFloat(0.25f) == doctest::Approx(-3.4e38f));
+
+    constexpr float kLargestFloat = std::numeric_limits<float>::max();
+    constexpr double kAsDouble = static_cast<double>(kLargestFloat);
+    CHECK(Value(kAsDouble).asFloat(0.25f) == kLargestFloat);
+    CHECK(Value(-kAsDouble).asFloat(0.25f) == -kLargestFloat);
+
+    // Above the largest float but below the point where the conversion overflows, which is
+    // half a float ulp higher. Everything in that band rounds to the largest float and is
+    // perfectly well defined, so a guard cutting at the value itself would refuse numbers it
+    // can convert -- including, embarrassingly, the one this very file writes for it: the
+    // shortest decimal a float needs to name FLT_MAX parses back as a double a shade above it.
+    CHECK(Value(std::nextafter(kAsDouble, std::numeric_limits<double>::infinity()))
+              .asFloat(0.25f) == kLargestFloat);
+    CHECK(Value(kLargestFloat).asFloat(0.25f) == kLargestFloat);
+    CHECK(Value(-kLargestFloat).asFloat(0.25f) == -kLargestFloat);
+    CHECK(parse(dump(Value(kLargestFloat), 0)).asFloat(0.25f) == kLargestFloat);
+
+    // And the far side of that boundary, where it does overflow: the midpoint itself rounds
+    // away from every float there is, so it and everything above it fall back.
+    constexpr double kFloatOverflow = 0x1.ffffffp+127;
+    CHECK(Value(kFloatOverflow).asFloat(0.25f) == doctest::Approx(0.25f));
+    CHECK(Value(-kFloatOverflow).asFloat(0.25f) == doctest::Approx(0.25f));
+    CHECK(Value(std::nextafter(kFloatOverflow, 0.0)).asFloat(0.25f) == kLargestFloat);
+
+    // A NaN compares false against both ends, which is why the guard is one negated conjunction
+    // rather than two tests. Neither a NaN nor an infinity can arrive from parse(), so both
+    // reach a typed read only from a computed value -- which is the only place a NaN comes from
+    // in the first place.
+    CHECK(Value(std::numeric_limits<double>::quiet_NaN()).asFloat(0.25f) ==
+          doctest::Approx(0.25f));
+    CHECK(Value(std::numeric_limits<double>::infinity()).asFloat(0.25f) == doctest::Approx(0.25f));
+    CHECK(Value(-std::numeric_limits<double>::infinity()).asFloat(0.25f) ==
+          doctest::Approx(0.25f));
+
+    // The range check is reached only once the kind matches, so the older rule is intact: a
+    // value that is not a number at all still falls back for the reason it always did.
+    CHECK(Value("1e39").asFloat(0.25f) == doctest::Approx(0.25f));
+    CHECK(Value(true).asFloat(0.25f) == doctest::Approx(0.25f));
+    CHECK(Value().asFloat(0.25f) == doctest::Approx(0.25f));
+}
+
 TEST_CASE("json: asWide converts UTF-8 to UTF-16") {
     // Every wide string the UI shows arrives through here: the sound-file path out of the
     // settings and the controller id out of the history.
