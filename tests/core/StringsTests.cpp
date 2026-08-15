@@ -395,6 +395,10 @@ TEST_CASE("strings: every entry is a format string vformat can consume") {
             CAPTURE(i);
             std::wstring formatted;
             CHECK_NOTHROW(formatted = formatText(textAt(i), std::wstring(L"a"), 1));
+            // On the throwing path formatted is still empty, and an empty string trivially
+            // holds no braces -- so without this the two checks below would report success
+            // for exactly the entry that failed.
+            CHECK_FALSE(formatted.empty());
             CHECK(formatted.find(L'{') == std::wstring::npos);
             CHECK(formatted.find(L'}') == std::wstring::npos);
         }

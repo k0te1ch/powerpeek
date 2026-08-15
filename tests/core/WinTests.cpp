@@ -45,6 +45,10 @@ constexpr wchar_t kReplacement = L'\xFFFD';
 // holds no message for the id, or that code followed by the message in brackets. Which one
 // comes back depends on the language pack installed on the machine running the suite, so no
 // test may assert the message text -- only that the frame around it is intact.
+//
+// Every case using this helper is therefore satisfied by an implementation that never looks
+// a message up at all. The access-denied case at the bottom of the file is the one that is
+// not, and it is what keeps the FormatMessage half of the function honest.
 bool hasDescribedShape(std::wstring const& described) {
     if (described.size() == 10u) {
         return true;
@@ -399,6 +403,25 @@ TEST_CASE("win: describeHresult produces the same shape for every hresult") {
         CHECK(result.substr(0, 10) == std::format(L"0x{:08X}", code));
         CHECK(hasDescribedShape(result));
     }
+}
+
+TEST_CASE("win: an error windows always has words for comes back with them") {
+    // Everything else about describeHresult is a shape check, and a version that dropped
+    // FormatMessageW entirely and returned the bare code would satisfy every one of them --
+    // including the repeat-call and trailing-punctuation cases, which only ever look at a
+    // result that happens to be long enough. This is the case that refuses that version.
+    //
+    // Access denied is win32 error 5. It sits in the base message table of every Windows
+    // install and every language pack, so demanding a message here does not quietly require
+    // an English machine; what the message says is still nobody's business.
+    std::wstring const described = describeHresult(E_ACCESSDENIED);
+    REQUIRE(described.size() > 12u);
+    CHECK(described.substr(0, 12) == L"0x80070005 (");
+    CHECK(described.back() == L')');
+
+    // The brackets have to hold something. A strip loop that ate the whole message would
+    // otherwise leave "0x80070005 ()" and still pass every check above.
+    CHECK(described.size() > 13u);
 }
 
 TEST_CASE("win: describeHresult contains no embedded nul from the FormatMessage buffer") {

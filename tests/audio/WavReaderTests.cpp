@@ -292,7 +292,13 @@ TEST_CASE("wavReader: rf64 and bw64 images are rejected before the chunk walk") 
     // chunk headers are placeholders. Parsing one as RIFF would either truncate the audio or
     // hand the engine a length that disagrees with the file; both have to reach Media
     // Foundation instead.
+    //
+    // Seeded rather than default-constructed, because the two checks at the end are about the
+    // parser leaving the caller's clip alone. Against a default clip they would pass for a
+    // parser that cleared it, and indeed for one that did nothing at all.
     PcmClip clip;
+    clip.samples = Bytes{0x11, 0x22};
+    clip.sampleRate = 8000;
 
     SUBCASE("rf64") {
         CHECK(parseImage(riffImage("RF64", "WAVE", plainChunks()), clip) ==
@@ -304,8 +310,8 @@ TEST_CASE("wavReader: rf64 and bw64 images are rejected before the chunk walk") 
               WavStatus::NotRiffWave);
     }
 
-    CHECK(clip.samples.empty());
-    CHECK(clip.sampleRate == 0u);
+    CHECK(clip.samples == Bytes{0x11, 0x22});
+    CHECK(clip.sampleRate == 8000u);
 }
 
 TEST_CASE("wavReader: a fmt chunk without a data chunk is malformed") {

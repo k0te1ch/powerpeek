@@ -129,8 +129,11 @@ TEST_CASE("json: a failed parse and a parsed null are both null values") {
     CHECK(parse("{\"a\":1").asObject().empty());
 
     // The error pointer is optional, and a caller that does not want the detail must not
-    // crash on the failing path.
+    // crash on the failing path. Null on its own proves little -- a failed parse and a
+    // document holding literal null give back the same thing -- so the successful call
+    // beside it is what shows this overload still parses rather than always giving up.
     CHECK(parse("{").isNull());
+    CHECK(parse("{\"a\":1}").asObject().size() == 1u);
 }
 
 TEST_CASE("json: anything after the root value is trailing data") {

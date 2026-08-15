@@ -1,6 +1,7 @@
 #include "TestSupport.h"
 
 #include "core/Settings.h"
+#include "core/Strings.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -16,6 +17,7 @@ using peek::EventSettings;
 using peek::LanguagePreference;
 using peek::NotificationEvent;
 using peek::Settings;
+using peek::Text;
 using peek::ThemePreference;
 using peek::TrayColor;
 using peek::TrayStyle;
@@ -166,20 +168,20 @@ TEST_CASE("settings: forEvent indexes the array in enum order") {
 }
 
 TEST_CASE("settings: every event has its own display name") {
-    // Distinctness holds in both shipped languages, so this catches a mis-ordered name
-    // table without pinning the test to whichever language ran last.
-    std::wstring_view const connected = peek::displayName(NotificationEvent::Connected);
-    std::wstring_view const disconnected = peek::displayName(NotificationEvent::Disconnected);
-    std::wstring_view const low = peek::displayName(NotificationEvent::BatteryLow);
-    std::wstring_view const critical = peek::displayName(NotificationEvent::BatteryCritical);
-    std::wstring_view const charged = peek::displayName(NotificationEvent::FullyCharged);
+    // Each name is tied to the row that belongs to it, rather than merely being different
+    // from its neighbours. A ring of pairwise inequalities looks like it catches a
+    // mis-ordered name table and does not: rotate the table by one place and every pair is
+    // still distinct. These identities hold whichever language ran last, so the case stays
+    // language-independent either way.
+    CHECK(peek::displayName(NotificationEvent::Connected) == peek::text(Text::EventConnected));
+    CHECK(peek::displayName(NotificationEvent::Disconnected) ==
+          peek::text(Text::EventDisconnected));
+    CHECK(peek::displayName(NotificationEvent::BatteryLow) == peek::text(Text::EventLow));
+    CHECK(peek::displayName(NotificationEvent::BatteryCritical) ==
+          peek::text(Text::EventCritical));
+    CHECK(peek::displayName(NotificationEvent::FullyCharged) == peek::text(Text::EventCharged));
 
-    CHECK_FALSE(connected.empty());
-    CHECK(connected != disconnected);
-    CHECK(disconnected != low);
-    CHECK(low != critical);
-    CHECK(critical != charged);
-    CHECK(charged != connected);
+    CHECK_FALSE(peek::displayName(NotificationEvent::Connected).empty());
 }
 
 TEST_CASE("settings: a missing file yields the defaults") {
