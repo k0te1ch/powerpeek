@@ -293,12 +293,17 @@ TEST_CASE("settings: a version that is not newer is read normally") {
     }
 }
 
-TEST_CASE("settings: the loaded version is always this build's version") {
+TEST_CASE("settings: the loaded version says which build wrote the file") {
     TempDir dir;
 
-    // load never copies the file's version into the struct, so the field can only ever
-    // mean "what this build writes", never "what was read".
+    // For a file this build understands the field means "what this build writes", whatever
+    // the file happened to say.
     CHECK(loadDocument(dir, R"json({"version": 0})json").version == 1);
+    CHECK(loadDocument(dir, R"json({"version": 1})json").version == 1);
+
+    // A file from the future is the exception, and carrying its version out of load is the
+    // whole mechanism that stops save from writing over it.
+    CHECK(loadDocument(dir, R"json({"version": 99})json").version == 99);
 }
 
 TEST_CASE("settings: unknown keys are ignored without damage") {
@@ -784,19 +789,38 @@ TEST_CASE("settings: a non-ASCII sound path survives a round trip") {
     CHECK(Settings::load(file).forEvent(NotificationEvent::FullyCharged).soundFile == path);
 }
 
-TEST_CASE("settings: save always writes this build's version") {
+TEST_CASE("settings: save writes this build's version for a file it understands") {
     TempDir dir;
     std::filesystem::path const file = dir.file(L"settings.json");
 
     Settings written;
-    written.version = 99;
     written.pollIntervalSeconds = 90;
     REQUIRE(written.save(file));
 
-    // The struct field is not what decides the on-disk version. Were it written through,
-    // the next load would see a version from the future and throw the whole file away.
     CHECK(readText(file).find("\"version\": 1") != std::string::npos);
     CHECK(Settings::load(file).pollIntervalSeconds == 90);
+}
+
+TEST_CASE("settings: save refuses to overwrite a file from a newer build") {
+    TempDir dir;
+    std::filesystem::path const file = dir.file(L"settings.json");
+
+    std::string const document = R"json({
+  "version": 99,
+  "pollIntervalSeconds": 45
+})json";
+    writeText(file, document);
+
+    // Reading defensively is the easy half, and on its own it protects the file for exactly
+    // as long as the user changes nothing. The settings in hand are this build's defaults;
+    // the moment anything persists them, every key the newer build stored is gone -- which
+    // is what running an older portable copy once used to cost.
+    Settings settings = Settings::load(file);
+    REQUIRE(settings.version == 99);
+
+    settings.pollIntervalSeconds = 90;
+    CHECK_FALSE(settings.save(file));
+    CHECK(readText(file) == document);
 }
 
 TEST_CASE("settings: save leaves no temporary behind") {
