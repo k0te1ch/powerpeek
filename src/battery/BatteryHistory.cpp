@@ -135,7 +135,6 @@ void BatteryHistory::Impl::load() {
             continue;
         }
         if (auto sample = decode(text)) {
-            lastPerController[sample->controllerId] = *sample;
             samples.push_back(std::move(*sample));
         }
     }
@@ -144,6 +143,16 @@ void BatteryHistory::Impl::load() {
     // assumes oldest first.
     std::stable_sort(samples.begin(), samples.end(),
                      [](HistorySample const& a, HistorySample const& b) { return a.when < b.when; });
+
+    // Seeded from the sorted samples rather than while reading them. The baseline this map
+    // holds is what record() compares against to decide a reading is unchanged, so it has to
+    // be the newest reading per controller -- and in the out-of-order file the sort above
+    // exists for, the last line is not the newest sample. Seeded from file order, the first
+    // record() of the session can match a stale reading, be dropped as a duplicate, and that
+    // transition is then missing from the log for good.
+    for (HistorySample const& sample : samples) {
+        lastPerController[sample.controllerId] = sample;
+    }
 }
 
 void BatteryHistory::Impl::rewrite() {
@@ -263,7 +272,16 @@ void BatteryHistory::record(ControllerInfo const& controller) {
     }
 
     m_impl->lastPerController[sample.controllerId] = sample;
-    m_impl->samples.push_back(sample);
+
+    // Placed rather than appended. samplesFor promises oldest first, and the drain estimate
+    // reads consecutive samples as a line through time, so one sample out of order does not
+    // just look untidy -- it inverts a segment of that line. A reading can genuinely belong
+    // before one already held: the clock moves backwards on an NTP correction, and the pad's
+    // lastUpdate is whatever the monitor stamped it with rather than the moment this runs.
+    auto const at = std::upper_bound(
+        m_impl->samples.begin(), m_impl->samples.end(), sample.when,
+        [](Clock::time_point when, HistorySample const& held) { return when < held.when; });
+    m_impl->samples.insert(at, sample);
     m_impl->append(sample);
 }
 
