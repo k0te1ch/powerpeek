@@ -15,7 +15,7 @@
 
 **English** · [Русский](README.ru.md)
 
-<img src="docs/images/controllers.png" width="760" alt="The Controllers page, showing a connected pad and its charge level">
+<img src="docs/images/en/controllers.png" width="760" alt="The Controllers page, showing a connected pad and its charge level">
 
 </div>
 
@@ -49,9 +49,9 @@ no network code.
 
 | Sounds | History |
 |:---:|:---:|
-| <img src="docs/images/sounds.png" width="380" alt="Per-event sound settings"> | <img src="docs/images/history.png" width="380" alt="Battery history chart"> |
+| <img src="docs/images/en/sounds.png" width="380" alt="Per-event sound settings"> | <img src="docs/images/en/history.png" width="380" alt="Battery history chart"> |
 | **Settings** | **About** |
-| <img src="docs/images/settings.png" width="380" alt="Settings page"> | <img src="docs/images/about.png" width="380" alt="The About page"> |
+| <img src="docs/images/en/settings.png" width="380" alt="Settings page"> | <img src="docs/images/en/about.png" width="380" alt="The About page"> |
 
 </div>
 
@@ -182,6 +182,22 @@ They will appear if you turn on "Show non-Xbox gamepads", and some report a usab
 nonsense, which is why the setting is off by default. Xbox controllers are what this is built and
 tested for.
 </details>
+
+## Roadmap
+
+Today it reads game controllers — pads, wheels and sticks. The point of the app is broader: the
+battery of **anything you connect to the machine**. In order:
+
+- **Bluetooth headphones and earbuds**, from the same device property Windows Settings itself shows.
+- **Mice, keyboards, pens and trackers** over Bluetooth LE, read on connect and then by notification,
+  never by polling — polling would wake the device and drain the battery it is reporting.
+- **Wired and radio peripherals** that publish the standard HID battery usage.
+- **Vendor protocols**, one vendor at a time, for devices that publish nothing standard.
+
+One caveat stated up front, because it will not go away: plenty of peripherals report no battery at
+all through any documented route. On the development machine not one of 36 HID collections did —
+headset, two mice, keyboard and drawing tablet included. A device whose protocol is unknown will not
+show a level, and this README will keep saying so.
 
 ## Contributing
 
