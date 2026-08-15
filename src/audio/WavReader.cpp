@@ -133,7 +133,12 @@ float decodeSample(std::uint8_t const* p, std::uint16_t bits, bool isFloat) noex
         }
         double value = 0.0;
         std::memcpy(&value, p, sizeof(value));
-        return static_cast<float>(value);
+        // Converting a double larger than FLT_MAX to float is undefined behaviour, not
+        // merely lossy, and this is a file: the user points the setting at it, so it can
+        // hold anything. Clamping while it is still a double keeps the cast defined and
+        // costs nothing for a sample that was already in range. NaN survives the clamp and
+        // is dealt with in quantise, where the same problem arrives from the 32-bit path.
+        return static_cast<float>(std::clamp(value, -1.0, 1.0));
     }
     switch (bits) {
     case 8:
@@ -161,6 +166,14 @@ float decodeSample(std::uint8_t const* p, std::uint16_t bits, bool isFloat) noex
 }
 
 std::int16_t quantise(float sample) noexcept {
+    // std::clamp passes a NaN straight through -- both of its comparisons are false against
+    // it -- and std::lrintf on a NaN raises the invalid-operation exception and returns an
+    // unspecified value, which then becomes an arbitrary sample. Silence is the only honest
+    // rendering of a sample that is not a number. The infinities need no special case: they
+    // compare the way the clamp wants and land on the rails.
+    if (std::isnan(sample)) {
+        return 0;
+    }
     float const clamped = std::clamp(sample, -1.0f, 1.0f);
     return static_cast<std::int16_t>(std::lrintf(clamped * 32767.0f));
 }
