@@ -517,6 +517,35 @@ TEST_CASE("json: a float is written as the decimal it was set from") {
         CHECK(Value(1.0f / 3.0f).asFloat(-1.0f) == 1.0f / 3.0f);
     }
 
+    SUBCASE("it is still the identical float at both ends of the range") {
+        // Everything above sits between 0.1 and 1.0, where the two roundings are easiest to
+        // believe. The claim they rest on is universal -- no double between two neighbouring
+        // floats is ever closer to the other one -- and the places it is least obvious are the
+        // ends: a subnormal, the smallest normal, and the magnitudes whose shortest form
+        // switches to exponent notation. A value that came back as its neighbour would move a
+        // slider the user never touched, once per save, in the direction of the drift.
+        float const samples[] = {0.0f,
+                                 -0.7f,
+                                 1e-30f,
+                                 1e30f,
+                                 std::numeric_limits<float>::min(),
+                                 std::numeric_limits<float>::denorm_min(),
+                                 16777216.0f,
+                                 std::numeric_limits<float>::max()};
+        for (float const sample : samples) {
+            CAPTURE(sample);
+            CHECK(Value(sample).asFloat(-1.0f) == sample);
+            CHECK(parse(dump(Value(sample), 0)).asFloat(-1.0f) == sample);
+        }
+
+        // The sign of a zero is the one bit equality cannot see, and it has to survive being
+        // printed, read back and printed again. A minus lost on the way would be invisible in
+        // every check above and would still rewrite a value nobody edited.
+        CHECK(std::signbit(Value(-0.0f).asFloat(1.0f)));
+        CHECK(dump(Value(-0.0f), 0) == "-0");
+        CHECK(std::signbit(parse(dump(Value(-0.0f), 0)).asFloat(1.0f)));
+    }
+
     SUBCASE("a double keeps every digit it has") {
         // Only the float overload shortens. A double has no coarser type behind it whose
         // spelling could be recovered, so trimming one would throw away digits its caller meant
@@ -529,11 +558,21 @@ TEST_CASE("json: a float is written as the decimal it was set from") {
 
     SUBCASE("a non-finite float has no decimal to round-trip through") {
         // The shortening step sees these before the writer does and has no decimal to work
-        // with, so whatever it hands on has to be the same non-finite number -- otherwise the
-        // rule that turns both into null is applied to something else.
+        // with, so whatever it hands on has to be the same non-finite number. The text cannot
+        // show that -- all three print as null whatever was stored -- so the stored number is
+        // what has to be read back: a computed volume that arrives as an infinity must reach
+        // the writer as one, or the rule that turns it into null is being applied to some
+        // other value.
+        CHECK(std::isinf(Value(std::numeric_limits<float>::infinity()).asNumber(0.0)));
+        CHECK(std::isnan(Value(std::numeric_limits<float>::quiet_NaN()).asNumber(0.0)));
+
+        Value const negative(-std::numeric_limits<float>::infinity());
+        CHECK(std::isinf(negative.asNumber(0.0)));
+        CHECK(std::signbit(negative.asNumber(0.0)));
+
+        // And the one check that ties the float overload to the null rule the double path
+        // spells out in full below.
         CHECK(dump(Value(std::numeric_limits<float>::infinity()), 0) == "null");
-        CHECK(dump(Value(-std::numeric_limits<float>::infinity()), 0) == "null");
-        CHECK(dump(Value(std::numeric_limits<float>::quiet_NaN()), 0) == "null");
     }
 }
 
@@ -678,11 +717,10 @@ TEST_CASE("json: the constructors pick the kind a caller expects") {
 
 TEST_CASE("json: the float constructor did not change what an int or a bool selects") {
     // Value(float) sits between the two numeric overloads the settings writer already used, and
-    // both an int and a bool convert to a float as readily as they do to a double. Only the
-    // exact match on their own overload keeps them off it, and deleting either as redundant is
-    // a plausible tidy-up -- one that would route every count and every flag in the settings
-    // file through 24 bits of mantissa.
-    CHECK(Value(true).kind() == Value::Kind::Bool);
+    // an int and a bool both convert to a float as readily as they do to a double: only the
+    // exact match on their own overload keeps them off it. The writer is where a flag that
+    // slipped onto a numeric overload would show, because it would be saved as 1 rather than
+    // true and the next load would fall back to the default for a kind that no longer matches.
     CHECK(dump(Value(true), 0) == "true");
     CHECK(dump(Value(false), 0) == "false");
 
@@ -812,7 +850,7 @@ TEST_CASE("json: asFloat refuses what will not fit a float") {
     CHECK(parse("1e39").kind() == Value::Kind::Number);
     CHECK(parse("1e39").asFloat(0.25f) == doctest::Approx(0.25f));
 
-    // The guard is symmetric, because a number is no more representable for being negative.
+    // Both signs are fenced, because a number is no more representable for being negative.
     CHECK(parse("-1e39").asFloat(0.25f) == doctest::Approx(0.25f));
 
     // Refusing anything merely large would be as bad as refusing nothing, so the ends of the
@@ -843,6 +881,15 @@ TEST_CASE("json: asFloat refuses what will not fit a float") {
     CHECK(Value(-kFloatOverflow).asFloat(0.25f) == doctest::Approx(0.25f));
     CHECK(Value(std::nextafter(kFloatOverflow, 0.0)).asFloat(0.25f) == kLargestFloat);
 
+    // The small end is deliberately left open, and that asymmetry is the whole point of the
+    // guard: converting a double too large for a float is undefined behaviour, converting one
+    // too small is an ordinary rounding to zero or to the smallest subnormal. Fencing both
+    // ends "for symmetry" would read a hand-typed opacity of 1e-300 as the setting it is
+    // replacing rather than as the zero it rounds to and the loader then clamps.
+    CHECK(parse("1e-300").asFloat(0.25f) == 0.0f);
+    CHECK(std::signbit(parse("-1e-300").asFloat(0.25f)));
+    CHECK(parse("1e-45").asFloat(0.25f) == std::numeric_limits<float>::denorm_min());
+
     // A NaN compares false against both ends, which is why the guard is one negated conjunction
     // rather than two tests. Neither a NaN nor an infinity can arrive from parse(), so both
     // reach a typed read only from a computed value -- which is the only place a NaN comes from
@@ -854,8 +901,9 @@ TEST_CASE("json: asFloat refuses what will not fit a float") {
           doctest::Approx(0.25f));
 
     // The range check is reached only once the kind matches, so the older rule is intact: a
-    // value that is not a number at all still falls back for the reason it always did.
-    CHECK(Value("1e39").asFloat(0.25f) == doctest::Approx(0.25f));
+    // value that is not a number at all still falls back for the reason it always did. A
+    // string takes the same path and is pinned with the other mismatched reads, so only the
+    // two kinds that reach asFloat nowhere else in this file are checked here.
     CHECK(Value(true).asFloat(0.25f) == doctest::Approx(0.25f));
     CHECK(Value().asFloat(0.25f) == doctest::Approx(0.25f));
 }

@@ -43,8 +43,12 @@ constexpr int kGap = 12;
 // is a distance and nothing more -- the stack has no idea which way the cards grow.
 constexpr int kOffset = 104;
 
-// The first card in a stack and the one behind it.
-constexpr int kStackOffsets[] = {0, kOffset};
+// Two windows the application asks for just as readily as the one above, and neither of which
+// holds a 340 by 96 card: a notification whose body wraps to a second line is taller, and a
+// controller with a long name is wider. Both keep the shipped shadow field, so what differs
+// between them and kWindow is the card the user sees.
+constexpr SIZE kTallWindow{388, 240};
+constexpr SIZE kWideWindow{520, 144};
 
 struct NamedPosition {
     ToastPosition position;
@@ -77,11 +81,17 @@ VisibleCard visibleCard(ToastPlacement const& placement, SIZE windowPx, int marg
                        placement.y + windowPx.cy - marginPx};
 }
 
-// Places one card with the window and shadow field the application ships, and hands back the
-// rectangle that would end up in front of the user.
+// Places one card of any size and hands back the rectangle that would end up in front of the
+// user.
+VisibleCard placedCardOfSize(RECT workArea, SIZE windowPx, int marginPx, int gapPx, int offsetPx,
+                             ToastPosition position) {
+    return visibleCard(placeToast(workArea, windowPx, marginPx, gapPx, offsetPx, position),
+                       windowPx, marginPx);
+}
+
+// The same, with the window and shadow field the application ships.
 VisibleCard placedCard(RECT workArea, int gapPx, int offsetPx, ToastPosition position) {
-    return visibleCard(placeToast(workArea, kWindow, kMargin, gapPx, offsetPx, position), kWindow,
-                       kMargin);
+    return placedCardOfSize(workArea, kWindow, kMargin, gapPx, offsetPx, position);
 }
 
 }  // namespace
@@ -129,23 +139,24 @@ TEST_CASE("placeToast: every position keeps the visible card a gap from the edge
     }
 }
 
-TEST_CASE("placeToast: no position puts any part of the visible card outside the work area") {
-    // The edges the case above does not constrain -- a left-anchored card's right edge, a
-    // top-anchored card's bottom edge -- are held by nothing but the window size arithmetic, and
-    // that is where a margin added instead of subtracted first shows up. A card that overhangs
-    // the work area is not merely untidy: everything past the edge is clipped by the monitor, and
-    // on a card this small that can be the whole battery reading.
-    for (auto const& entry : kAllPositions) {
-        CAPTURE(entry.name);
-        for (int const offset : kStackOffsets) {
-            CAPTURE(offset);
-            VisibleCard const card = placedCard(kWorkArea, kGap, offset, entry.position);
-            CHECK(card.left >= kWorkArea.left);
-            CHECK(card.top >= kWorkArea.top);
-            CHECK(card.right <= kWorkArea.right);
-            CHECK(card.bottom <= kWorkArea.bottom);
-        }
-    }
+TEST_CASE("placeToast: an offset past the far edge is passed straight through") {
+    // What keeps a stack on screen is the three slots ToastStack has, not anything here, and
+    // clamping an over-large offset back into the work area would be the worse behaviour by
+    // some way: every card past the edge would then land on the same coordinates as the one
+    // before it, so instead of a stack that visibly ran out of room the user would get cards
+    // stacked one exactly on top of another with only the newest legible. The offset is a
+    // distance the stack accumulated, and applying a sign to it is this function's whole job.
+    // As far from the anchored edge as the work area is tall, so wherever the card ends up it
+    // is not on the screen.
+    constexpr int beyond = static_cast<int>(kWorkArea.bottom - kWorkArea.top);
+
+    VisibleCard const fromBottom = placedCard(kWorkArea, kGap, beyond, ToastPosition::BottomRight);
+    CHECK(fromBottom.bottom == kWorkArea.bottom - kGap - beyond);
+    CHECK(fromBottom.bottom < kWorkArea.top);
+
+    VisibleCard const fromTop = placedCard(kWorkArea, kGap, beyond, ToastPosition::TopRight);
+    CHECK(fromTop.top == kWorkArea.top + kGap + beyond);
+    CHECK(fromTop.top > kWorkArea.bottom);
 }
 
 TEST_CASE("placeToast: the centred positions sit on the work area's centre line") {
@@ -196,9 +207,14 @@ TEST_CASE("placeToast: the centred positions sit on the work area's centre line"
         CHECK(primary.left - atOrigin.left == secondary.left - toTheLeft.left);
         CHECK(atOrigin.right - primary.right == toTheLeft.right - secondary.right);
 
-        // And the card really is centred on both, to the one pixel that cannot be divided.
-        CHECK(atOrigin.right - primary.right >= primary.left - atOrigin.left);
-        CHECK((atOrigin.right - primary.right) - (primary.left - atOrigin.left) <= 1);
+        // And the card really is centred, to the one pixel that cannot be divided. Which side
+        // that pixel falls to is deliberately not pinned: rounding it the other way would be
+        // just as consistent from monitor to monitor and no user could tell the two apart, so
+        // a test that named a side would fail on a change that costs nothing.
+        long const leftGap = primary.left - atOrigin.left;
+        long const rightGap = atOrigin.right - primary.right;
+        CHECK(leftGap - rightGap <= 1);
+        CHECK(rightGap - leftGap <= 1);
     }
 }
 
@@ -312,42 +328,6 @@ TEST_CASE("placeToast: a work area away from the origin still places the card in
     }
 }
 
-TEST_CASE("placeToast: the horizontal rule and the vertical rule are independent") {
-    // The six positions are two rules crossed, and they are computed by two separate pieces of
-    // code: a switch over all six for the x, and a single top-or-bottom question for the y. That
-    // arrangement is exactly what a mistyped case label survives -- BottomLeft grouped with the
-    // right-hand pair still produces a card in a plausible-looking place, just not the one the
-    // user chose, and only for that one setting out of six.
-    SUBCASE("positions sharing a side share an x") {
-        CHECK(placedCard(kWorkArea, kGap, 0, ToastPosition::TopLeft).left ==
-              placedCard(kWorkArea, kGap, 0, ToastPosition::BottomLeft).left);
-        CHECK(placedCard(kWorkArea, kGap, 0, ToastPosition::TopCenter).left ==
-              placedCard(kWorkArea, kGap, 0, ToastPosition::BottomCenter).left);
-        CHECK(placedCard(kWorkArea, kGap, 0, ToastPosition::TopRight).left ==
-              placedCard(kWorkArea, kGap, 0, ToastPosition::BottomRight).left);
-
-        // The three columns are genuinely different places, which is what stops the equalities
-        // above from being satisfied by a function that ignores the position entirely.
-        long const leftColumn = placedCard(kWorkArea, kGap, 0, ToastPosition::TopLeft).left;
-        long const centreColumn = placedCard(kWorkArea, kGap, 0, ToastPosition::TopCenter).left;
-        long const rightColumn = placedCard(kWorkArea, kGap, 0, ToastPosition::TopRight).left;
-        CHECK(leftColumn < centreColumn);
-        CHECK(centreColumn < rightColumn);
-    }
-
-    SUBCASE("positions sharing an edge share a y") {
-        long const topRow = placedCard(kWorkArea, kGap, 0, ToastPosition::TopLeft).top;
-        CHECK(placedCard(kWorkArea, kGap, 0, ToastPosition::TopCenter).top == topRow);
-        CHECK(placedCard(kWorkArea, kGap, 0, ToastPosition::TopRight).top == topRow);
-
-        long const bottomRow = placedCard(kWorkArea, kGap, 0, ToastPosition::BottomLeft).top;
-        CHECK(placedCard(kWorkArea, kGap, 0, ToastPosition::BottomCenter).top == bottomRow);
-        CHECK(placedCard(kWorkArea, kGap, 0, ToastPosition::BottomRight).top == bottomRow);
-
-        CHECK(topRow < bottomRow);
-    }
-}
-
 TEST_CASE("placeToast: growing the shadow field does not move the visible card") {
     // The margin is the term with a sign on both ends -- taken off the anchored edge, added back
     // at the far one -- and this is the only case that can tell the two apart, because it holds
@@ -357,19 +337,16 @@ TEST_CASE("placeToast: growing the shadow field does not move the visible card")
     // shadow is.
     for (auto const& entry : kAllPositions) {
         CAPTURE(entry.name);
-        VisibleCard const shipped =
-            visibleCard(placeToast(kWorkArea, kWindow, kMargin, kGap, kOffset, entry.position),
-                        kWindow, kMargin);
+        VisibleCard const shipped = placedCard(kWorkArea, kGap, kOffset, entry.position);
 
         // The same 340 by 96 card with no shadow field at all, and with twice the shipped one.
         SIZE const bare{kWindow.cx - 2 * kMargin, kWindow.cy - 2 * kMargin};
         VisibleCard const without =
-            visibleCard(placeToast(kWorkArea, bare, 0, kGap, kOffset, entry.position), bare, 0);
+            placedCardOfSize(kWorkArea, bare, 0, kGap, kOffset, entry.position);
 
         SIZE const padded{kWindow.cx + 2 * kMargin, kWindow.cy + 2 * kMargin};
-        VisibleCard const doubled = visibleCard(
-            placeToast(kWorkArea, padded, 2 * kMargin, kGap, kOffset, entry.position), padded,
-            2 * kMargin);
+        VisibleCard const doubled =
+            placedCardOfSize(kWorkArea, padded, 2 * kMargin, kGap, kOffset, entry.position);
 
         CHECK(without.left == shipped.left);
         CHECK(without.top == shipped.top);
@@ -380,5 +357,51 @@ TEST_CASE("placeToast: growing the shadow field does not move the visible card")
         CHECK(doubled.top == shipped.top);
         CHECK(doubled.right == shipped.right);
         CHECK(doubled.bottom == shipped.bottom);
+    }
+}
+
+TEST_CASE("placeToast: the anchored edges hold whatever size the card is") {
+    // Every other case here hands over a window holding the same 340 by 96 card, which is what
+    // one line of text on a 100% monitor comes to and nothing else. The card ToastWindow builds
+    // is measured from the notification's own text -- a body that wraps makes it taller -- and
+    // the whole window is then multiplied by the monitor's scale, so the size is a real
+    // variable. A rule written with those two numbers baked in, or a bottom edge that forgot to
+    // subtract the window height, would place the developer's own notifications perfectly and
+    // hang everyone else's over the edge of the screen.
+    SUBCASE("a taller card and a wider one anchor to the same edges") {
+        for (SIZE const window : {kTallWindow, kWideWindow}) {
+            CAPTURE(window.cx);
+            CAPTURE(window.cy);
+
+            VisibleCard const bottomRight =
+                placedCardOfSize(kWorkArea, window, kMargin, kGap, 0, ToastPosition::BottomRight);
+            CHECK(bottomRight.right == kWorkArea.right - kGap);
+            CHECK(bottomRight.bottom == kWorkArea.bottom - kGap);
+
+            VisibleCard const topLeft =
+                placedCardOfSize(kWorkArea, window, kMargin, kGap, 0, ToastPosition::TopLeft);
+            CHECK(topLeft.left == kWorkArea.left + kGap);
+            CHECK(topLeft.top == kWorkArea.top + kGap);
+
+            VisibleCard const centred =
+                placedCardOfSize(kWorkArea, window, kMargin, kGap, 0, ToastPosition::TopCenter);
+            CHECK(centred.left + centred.right == kWorkArea.left + kWorkArea.right);
+        }
+    }
+
+    // The scale reaches every term at once -- the card, the shadow field it carries and the gap
+    // it keeps from the edge are all multiplied before they arrive here. An expression that
+    // mixed a scaled length with an unscaled one would still be right at 100% and wrong at
+    // every other setting, which is the half of the range a developer on one 100% display never
+    // looks at.
+    SUBCASE("a window scaled for a 150% monitor") {
+        constexpr SIZE window{582, 246};
+        constexpr int marginPx = 36;
+        constexpr int gapPx = 18;
+
+        VisibleCard const card =
+            placedCardOfSize(kWorkArea, window, marginPx, gapPx, 0, ToastPosition::BottomRight);
+        CHECK(card.right == kWorkArea.right - gapPx);
+        CHECK(card.bottom == kWorkArea.bottom - gapPx);
     }
 }

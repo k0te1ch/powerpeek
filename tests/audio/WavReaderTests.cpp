@@ -628,16 +628,20 @@ TEST_CASE("wavReader: fmt chunks of sixteen eighteen and forty bytes all parse")
     CHECK(clip.samples == eightBytes());
 }
 
-TEST_CASE("wavReader: a sixteen byte fmt chunk never reads cbsize from the next chunk") {
-    // The trap: a 16-byte fmt has no cbSize field, so the two bytes sitting where one would be
-    // are the 'd' and 'a' of the following data chunk, which read little-endian as 24932 --
-    // comfortably past the 22 an extensible file needs. Taking that at face value would classify
-    // a PCMWAVEFORMAT from a SubFormat GUID assembled out of the next chunk's header.
-    Bytes const fmt = fmtBody(Fmt{.tag = WAVE_FORMAT_EXTENSIBLE, .channels = 2});
-    REQUIRE(fmt.size() == 16u);
+TEST_CASE("wavReader: a fmt chunk too short to hold cbsize never reads one from the file") {
+    // A 17-byte fmt is the one chunk length where the copy really does bring a byte of cbSize in
+    // off the disk: the body is a PCMWAVEFORMAT with a single stray byte after it, and that byte
+    // lands in the low half of the field. Believed, it says the 22 bytes of an extensible
+    // extension arrived, and the SubFormat is then read as the zeroes this parser cleared the
+    // struct to -- which match neither subtype, so a header cut off mid-field is reported as an
+    // exotic codec, handed to Media Foundation and logged as a compressed WAVE rather than as
+    // the truncation it is.
+    Bytes body = fmtBody(Fmt{.tag = WAVE_FORMAT_EXTENSIBLE});
+    REQUIRE(body.size() == 16u);
+    body.push_back(std::uint8_t{22});
 
     PcmClip clip;
-    CHECK(parseImage(riff({chunk("fmt ", fmt), chunk("data", eightBytes())}), clip) ==
+    CHECK(parseImage(riff({chunk("fmt ", body), chunk("data", eightBytes())}), clip) ==
           WavStatus::Malformed);
 }
 
@@ -726,19 +730,22 @@ TEST_CASE("wavReader: an extensible fmt chunk with a short cbsize is malformed")
     CHECK(withCbSize(22) == WavStatus::Ok);
 }
 
-TEST_CASE("wavReader: a fmt chunk shorter than the cbsize it declares is malformed") {
-    // cbSize is only the writer's claim about the extension that follows; the chunk size is what
-    // actually arrived. A download cut off after 18 bytes still carries the extensible tag and a
-    // cbSize of 22, and taking the claim at its word classifies the file from a SubFormat that
-    // was never read out of it -- the GUID is whatever this parser cleared the struct to. Those
-    // zeroes match neither the PCM nor the float subtype, so a file that is simply cut in half
-    // was reported as an exotic codec, which sends the bytes on to Media Foundation and logs a
-    // compressed-WAVE line about a truncation.
+TEST_CASE("wavReader: cbsize is believed only as far as the chunk actually reaches") {
+    // cbSize is the writer's claim about the extension that follows; the chunk size is what
+    // actually arrived, and the parser believes the smaller of the two. Both halves of that
+    // clamp are load-bearing, and they go wrong in opposite directions.
     //
-    // The two numbers are the whole case: what the extension claims and how much of it is there.
-    // That the complete 40-byte header still parses is not restated here: the decoding case
-    // above already holds it, and a copy of it alongside these would read as though the clamp
-    // were the thing keeping it working.
+    // Too little arrived, and the file is a download cut off after 18 bytes: it still carries
+    // the extensible tag and a cbSize of 22, and taking the claim at its word classifies the
+    // file from a SubFormat that was never read out of it -- the GUID is whatever this parser
+    // cleared the struct to. Those zeroes match neither the PCM nor the float subtype, so a file
+    // that is simply cut in half is reported as an exotic codec, which sends the bytes on to
+    // Media Foundation and logs a compressed-WAVE line about a truncation.
+    //
+    // All of it arrived and only the claim is wrong, and the file is an ordinary 40-byte
+    // extensible header from a writer that left rubbish in the field. Rewriting the clamp as a
+    // refusal of any mismatch, or as a zeroing of cbSize, would silence that whole class of file
+    // while leaving the truncation subcases green.
     auto const fmtOf = [](int cbSize, std::size_t extensionBytes) {
         return Fmt{.tag = WAVE_FORMAT_EXTENSIBLE,
                    .cbSize = static_cast<std::uint16_t>(cbSize),
@@ -751,20 +758,25 @@ TEST_CASE("wavReader: a fmt chunk shorter than the cbsize it declares is malform
         CHECK(statusOfFmt(fmt) == WavStatus::Malformed);
     }
 
-    SUBCASE("eighteen bytes claiming the largest extension the field can hold") {
-        // The size of the claim changes nothing, because there is no extension for it to be a
-        // claim about: the chunk ended at the last field of a WAVEFORMATEX.
-        Fmt const fmt = fmtOf(0xFFFF, 0);
-        REQUIRE(fmtBody(fmt).size() == 18u);
-        CHECK(statusOfFmt(fmt) == WavStatus::Malformed);
-    }
-
     SUBCASE("twenty bytes of the twenty two") {
         // Two bytes of extension is wValidBitsPerSample and nothing else; the GUID starts six
         // bytes further along. Part of an extension is no more classifiable than none of it.
         Fmt const fmt = fmtOf(22, 2);
         REQUIRE(fmtBody(fmt).size() == 20u);
         CHECK(statusOfFmt(fmt) == WavStatus::Malformed);
+    }
+
+    SUBCASE("the whole extension behind an impossible claim") {
+        // The samples are checked rather than just the status, so the file has to come out as
+        // the PCM its SubFormat says it is and not merely avoid being refused.
+        Fmt const fmt{.tag = WAVE_FORMAT_EXTENSIBLE,
+                      .cbSize = std::uint16_t{0xFFFF},
+                      .validBits = 16,
+                      .subFormat = KSDATAFORMAT_SUBTYPE_PCM};
+        REQUIRE(fmtBody(fmt).size() == 40u);
+
+        std::vector<std::int16_t> const expected{1, -1, 32767, -32767};
+        CHECK(samplesOf(decode(fmt, pcm16Bytes(expected))) == expected);
     }
 }
 
@@ -898,10 +910,16 @@ TEST_CASE("wavReader: float samples outside minus one to plus one clamp rather t
     }
 
     SUBCASE("sixty four bit") {
-        PcmClip const clip =
-            decode(Fmt{.tag = WAVE_FORMAT_IEEE_FLOAT, .bits = 64}, float64Bytes({2.5, -2.5}));
+        // The last four are past FLT_MAX, where narrowing to float is undefined rather than
+        // merely lossy, so the clamp has to happen while the sample is still a double. Nothing
+        // in this build can see that go wrong -- both orders land on the same rail on MSVC --
+        // which is why they are extra inputs here rather than a case of their own: they cost a
+        // line, and a sanitizing build would catch what the assertion cannot.
+        double const huge = std::numeric_limits<double>::infinity();
+        PcmClip const clip = decode(Fmt{.tag = WAVE_FORMAT_IEEE_FLOAT, .bits = 64},
+                                    float64Bytes({2.5, -2.5, 1e300, -1e300, huge, -huge}));
 
-        std::vector<std::int16_t> const expected{32767, -32767};
+        std::vector<std::int16_t> const expected{32767, -32767, 32767, -32767, 32767, -32767};
         CHECK(samplesOf(clip) == expected);
     }
 }
@@ -929,19 +947,6 @@ TEST_CASE("wavReader: a sample that is not a number decodes to silence") {
         std::vector<std::int16_t> const expected{0, 16384};
         CHECK(samplesOf(clip) == expected);
     }
-}
-
-TEST_CASE("wavReader: a double too large for a float does not reach the conversion") {
-    // Converting a double past FLT_MAX to float is undefined behaviour rather than a lossy
-    // cast, so the value has to be brought into range while it is still a double. The result
-    // is the same rail the smaller overshoots land on; the point is how it gets there.
-    PcmClip const clip =
-        decode(Fmt{.tag = WAVE_FORMAT_IEEE_FLOAT, .bits = 64},
-               float64Bytes({1e300, -1e300, std::numeric_limits<double>::infinity(),
-                             -std::numeric_limits<double>::infinity()}));
-
-    std::vector<std::int16_t> const expected{32767, -32767, 32767, -32767};
-    CHECK(samplesOf(clip) == expected);
 }
 
 TEST_CASE("wavReader: sixty four bit float is decoded") {
