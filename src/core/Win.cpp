@@ -93,28 +93,46 @@ std::wstring describeHresult(HRESULT hr) {
         LocalFree(buffer);
     }
 
-    // FormatMessage hands back a whole sentence, "...\r\n" and all, and this text then
-    // goes inside one -- in brackets, after a code, usually mid-line in a log. The line
-    // break and the full stop closing the system's own sentence have to go.
+    // A log record is one line. Of the 3917 messages this machine holds for the win32
+    // facility alone, 431 carry a line break in the middle of themselves -- the table wraps
+    // its longer entries -- and one left in turns a logged error into two lines, the second
+    // of which has no timestamp, no code and nothing to tell it from a record of its own.
+    // Every run of breaks and tabs becomes a single space.
+    std::wstring flattened;
+    flattened.reserve(text.size());
+    for (wchar_t const c : text) {
+        if (c == L'\r' || c == L'\n' || c == L'\t') {
+            if (!flattened.empty() && flattened.back() != L' ') {
+                flattened.push_back(L' ');
+            }
+            continue;
+        }
+        flattened.push_back(c);
+    }
+    text.swap(flattened);
+
+    // What is left is a whole sentence, and this text then goes inside one -- in brackets,
+    // after a code, usually mid-line in a log. The space the line break became and the full
+    // stop closing the system's own sentence both have to go.
     //
     // Only those, though. Popping every trailing dot took punctuation the message itself
-    // owns: a message ending in an ellipsis came back with a stray "..", and one made of
-    // two sentences lost the stop between them and the bracket. So: whitespace in full,
-    // then a single period, and not one that is part of a longer run.
-    auto const isTrailingSpace = [](wchar_t c) {
-        return c == L'\r' || c == L'\n' || c == L'\t' || c == L' ';
-    };
-    while (!text.empty() && isTrailingSpace(text.back())) {
-        text.pop_back();
-    }
-    if (!text.empty() && text.back() == L'.' &&
-        (text.size() == 1 || text[text.size() - 2] != L'.')) {
-        text.pop_back();
-        // And again underneath it. Several rows of the message table put a blank in front of
-        // their own full stop, and taking the stop away exposes it against the bracket -- the
-        // old single pass never showed that up, because it went on popping through the space.
-        while (!text.empty() && isTrailingSpace(text.back())) {
+    // owns: a message ending in an ellipsis came back with a stray "..", and four rows here
+    // do end in one. Hence a single period, and not one that is part of a longer run.
+    //
+    // Repeated until nothing more comes off, because seven rows put a blank in front of
+    // their own stop: taking the stop away exposes the blank against the closing bracket,
+    // and one pass would leave it there.
+    for (;;) {
+        std::size_t const before = text.size();
+        while (!text.empty() && text.back() == L' ') {
             text.pop_back();
+        }
+        if (!text.empty() && text.back() == L'.' &&
+            (text.size() == 1 || text[text.size() - 2] != L'.')) {
+            text.pop_back();
+        }
+        if (text.size() == before) {
+            break;
         }
     }
 

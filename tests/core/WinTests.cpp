@@ -14,7 +14,6 @@
 
 #include "core/Win.h"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -58,11 +57,13 @@ bool hasDescribedShape(std::wstring const& described) {
            described.back() == L')';
 }
 
-// The two clauses of the trailing trim in describeHresult, named once so a test can assert
-// against the contract rather than restate it. Trailing whitespace never survives, in any
-// amount or flavour. A full stop survives only as part of a longer run: an ellipsis is
-// punctuation the message itself owns, whereas a stop standing alone is only the system
-// closing its own sentence, and that sentence ends at the bracket instead.
+// The two properties the trailing trim leaves behind, named once so a test can assert against
+// the contract rather than restate it. Neither of them is a "usually": the trim repeats
+// {take the blanks, take a lone stop} until nothing more comes off, so no amount or flavour
+// of whitespace survives, and no stop standing on its own does either. A stop with another
+// beside it does survive -- an ellipsis is punctuation the message itself owns, whereas a
+// lone stop is only the system closing its own sentence, and that sentence ends at the
+// bracket instead.
 bool endsWithWhitespace(std::wstring_view text) {
     if (text.empty()) {
         return false;
@@ -88,11 +89,49 @@ std::wstring_view bracketedMessage(std::wstring const& described) {
     return std::wstring_view(described).substr(12u, described.size() - 13u);
 }
 
+// The machine's own text with every run of breaks and tabs folded down to a single space, the
+// way describeHresult folds it before trimming anything. A described message is a prefix of
+// this and no longer of the raw text, because the message table wraps its longer rows, so a
+// test holding the two up against each other has to fold first or it is comparing against
+// text the function never saw.
+//
+// This is the one piece of the implementation this file has to carry. describeHresult takes an
+// HRESULT and nothing else, so there is no way to feed the trim text of our own, and the
+// message table is the only material there is to check it against.
+std::wstring foldBreaks(std::wstring_view text) {
+    std::wstring folded;
+    folded.reserve(text.size());
+    for (wchar_t const c : text) {
+        if (c == L'\r' || c == L'\n' || c == L'\t') {
+            if (!folded.empty() && folded.back() != L' ') {
+                folded.push_back(L' ');
+            }
+            continue;
+        }
+        folded.push_back(c);
+    }
+    return folded;
+}
+
+// The text with its trailing blanks off and nothing else touched: what the trim is looking at
+// by the time it decides whether the last stop is its to take.
+std::wstring_view withoutTrailingSpaces(std::wstring_view text) {
+    std::size_t const end = text.find_last_not_of(L' ');
+    if (end == std::wstring_view::npos) {
+        return {};
+    }
+    return text.substr(0, end + 1u);
+}
+
 // The message the machine itself holds for an id, asked for exactly the way describeHresult
 // asks for it. A test may not know what this says, but it can hold the described form up
 // against it, which is the only way to establish that the trim took nothing it should not
-// have. The flags are repeated rather than shared because they are part of what is being
-// checked: FORMAT_MESSAGE_IGNORE_INSERTS in particular changes what comes back.
+// have.
+//
+// Repeating the flags and the language id here is the price of there being no seam: they are
+// part of what a caller receives, so a rewrite that changes either -- LANG_USER_DEFAULT, say,
+// or adding FORMAT_MESSAGE_MAX_WIDTH_MASK -- fails the cases below even though the trim itself
+// is untouched. Read such a failure as "the fetch moved" and move this call with it.
 std::wstring systemMessage(HRESULT hr) {
     wchar_t* buffer = nullptr;
     DWORD const length = FormatMessageW(
@@ -390,52 +429,40 @@ TEST_CASE("win: describeHresult prints a negative hresult as its unsigned bit pa
     CHECK(describeHresult(E_UNEXPECTED).starts_with(L"0x8000FFFF"));
 }
 
-TEST_CASE("win: describeHresult keeps the documented shape for a well-known failure code") {
-    auto const result = describeHresult(E_ACCESSDENIED);
-    CHECK(result.starts_with(L"0x80070005"));
-    // Not "Access is denied": the message comes from whichever language pack the machine
-    // carries, and is absent entirely on an install with no message resource for the id. The
-    // shape is the part the log format depends on and the only part that holds everywhere.
-    CHECK(hasDescribedShape(result));
-}
-
-TEST_CASE("win: describeHresult formats s_ok the same way as a failure code") {
-    // Nothing in describeHresult tests SUCCEEDED or FAILED, and that matters because both
-    // the logger and the settings writer format HRESULT_FROM_WIN32(GetLastError()) on paths
-    // where the last error may legitimately be zero. A success code still has to produce a
-    // parseable field, or the record loses its trailing column and whatever reads the log
-    // shifts by one.
-    auto const result = describeHresult(S_OK);
-    CHECK(result.starts_with(L"0x00000000"));
-    CHECK(hasDescribedShape(result));
-}
-
-TEST_CASE("win: describeHresult leaves no trailing whitespace or lone stop before the bracket") {
-    // Windows system messages end with ".\r\n". Left in, every logged error would carry a
-    // carriage return and a newline in the middle of its own line, and the log would stop
-    // being one record per line -- the single property its whole format rests on. The stop
-    // goes with them because the sentence it closes now ends at the bracket. This holds on a
-    // localised install too, because the strip runs on whatever text came back.
-    std::array const codes{S_OK,
-                           S_FALSE,
-                           E_FAIL,
-                           E_NOTIMPL,
-                           E_INVALIDARG,
-                           E_OUTOFMEMORY,
-                           E_ACCESSDENIED,
-                           E_UNEXPECTED,
-                           HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)};
-
-    for (HRESULT const code : codes) {
-        CAPTURE(code);
-        auto const result = describeHresult(code);
-        if (result.size() > 10u) {
-            CHECK(result.back() == L')');
-            auto const message = bracketedMessage(result);
-            CHECK_FALSE(endsWithWhitespace(message));
-            CHECK_FALSE(endsWithLoneFullStop(message));
+TEST_CASE("win: describeHresult folds a wrapped system message onto one line") {
+    // A log record is one line: Logger::write splices the described error into
+    // "<timestamp>  <level>  <message>\r\n" and escapes nothing. The message table wraps its
+    // longer rows, and a break left in one turns a single logged error into a second record
+    // with no timestamp, no level and nothing to mark it as a continuation -- so whatever
+    // reads the log back, splitting on newlines first, is handed a line it cannot parse and a
+    // fault report that has lost half of itself. Tabs go the same way, being the other
+    // character a column-oriented reader takes as a separator.
+    //
+    // The whole win32 facility is walked because which rows wrap is the language pack's
+    // business: on the machine this was written on 431 of them do, and none of the ids anyone
+    // would think to write down is among them.
+    int examined = 0;
+    int wrapped = 0;
+    for (std::uint32_t code = 0; code < 0x3000u; ++code) {
+        HRESULT const hr = HRESULT_FROM_WIN32(code);
+        std::wstring const raw = systemMessage(hr);
+        if (raw.empty()) {
+            continue;
         }
+        ++examined;
+        if (raw.find_first_of(L"\r\n\t") != std::wstring::npos) {
+            ++wrapped;
+        }
+
+        CAPTURE(code);
+        CHECK(describeHresult(hr).find_first_of(L"\r\n\t") == std::wstring::npos);
     }
+
+    // That the breaks became spaces rather than nothing at all -- "Access denied" and not
+    // "Accessdenied" -- is pinned by the prefix check in the trim case below, which holds the
+    // described form against the folded text.
+    INFO("wrapped rows: " << wrapped);
+    REQUIRE(examined > 100);
 }
 
 TEST_CASE("win: describeHresult takes the sentence terminator and nothing else") {
@@ -443,59 +470,93 @@ TEST_CASE("win: describeHresult takes the sentence terminator and nothing else")
     // satisfies the lot: "0x80070005 (Access is)" ends in neither whitespace nor a lone stop
     // and carries a perfectly good frame. This case holds the described form against the text
     // the machine itself supplied, so the expectation is whatever the installed language pack
-    // produced and no Windows edition is assumed. What it pins is the size of the bite: a run
-    // of trailing whitespace, then at most one full stop, then whatever whitespace that stop
-    // was hiding.
+    // produced and no Windows edition is assumed. What it pins is the size of the bite:
+    // blanks, and a full stop only where that stop is the system closing its own sentence.
     //
     // The whole win32 facility is walked rather than a list of well-known codes, and that is
     // the point of the case rather than thoroughness for its own sake. The trim is about
     // punctuation the message table happens to carry, and the ids anyone would think to write
     // down all end their message the same dull way: one full stop, one line break. The rows
-    // that make the rules bite are obscure ones -- on this machine seven ids in this range end
-    // their sentence with a space in front of the stop, and taking the stop away exposed it
-    // against the closing bracket. A hand-picked list contained none of them and passed while
-    // that was broken.
+    // that make the rules bite are obscure ones -- on this machine seven ids in this range put
+    // a blank in front of their stop, where taking the stop away exposes the blank against the
+    // closing bracket, and four end in an ellipsis, where taking anything at all is wrong. A
+    // hand-picked list contained none of the eleven and passed while both rules were broken.
     //
-    // The clause about a longer run of stops is the one half this cannot promise to exercise:
-    // whether any row here ends in an ellipsis is up to the language pack, and there is no
-    // seam to feed describeHresult text of our own through. It is checked wherever the table
-    // does carry one, and the count below is what stops the case from passing on nothing.
+    // How many rows reach either clause is the language pack's business, so the two counts
+    // below are reported and not required: demanding them would trade a dependence on the
+    // machine for a dependence on its language, and a run that reports zero of both has told
+    // whoever is reading the failure which install they are standing on.
     int examined = 0;
-    for (std::uint32_t code = 0; code < 0x3000u; ++code) {
-        HRESULT const hr = HRESULT_FROM_WIN32(code);
+    int ellipsisRows = 0;
+    int blankBeforeStopRows = 0;
+
+    auto const checkTrim = [&](HRESULT hr) {
         std::wstring const raw = systemMessage(hr);
         if (raw.empty()) {
             // No message resource for this id on this install; the bare-code branch that
             // produces is covered elsewhere.
-            continue;
+            return;
         }
         ++examined;
+        auto const code = static_cast<std::uint32_t>(hr);
         CAPTURE(code);
 
-        std::wstring const described = describeHresult(hr);
-        auto const message = bracketedMessage(described);
-        // Characters only ever come off the back, so what is left has to be a prefix of what
-        // came in. Anything else means the text was rebuilt rather than trimmed.
-        REQUIRE(raw.starts_with(message));
+        std::wstring const folded = foldBreaks(raw);
+        auto const message = bracketedMessage(describeHresult(hr));
+        // Characters only ever come off the back, so what is left has to be a prefix of the
+        // folded text. Anything else means the message was rebuilt rather than trimmed -- and
+        // this is also what pins the fold itself, since a break dropped instead of turned
+        // into a space puts the two texts out of step at the first wrapped row.
+        REQUIRE(folded.starts_with(message));
 
-        auto const removed = std::wstring_view(raw).substr(message.size());
-        CHECK(removed.find_first_not_of(L".\r\n\t ") == std::wstring_view::npos);
-        // At most one stop, however much whitespace surrounds it. A message ending in an
-        // ellipsis keeps at least two of its three.
-        CHECK(std::ranges::count(removed, L'.') <= 1);
+        auto const removed = std::wstring_view(folded).substr(message.size());
+        CHECK(removed.find_first_not_of(L". ") == std::wstring_view::npos);
+        // Two stops never come off together, whatever lies between them, because a stop with
+        // another beside it is the message's own punctuation and the trim leaves it alone.
+        CHECK(removed.find(L"..") == std::wstring_view::npos);
         // And nothing of the message's own is left touching the bracket.
         CHECK_FALSE(endsWithWhitespace(message));
         CHECK_FALSE(endsWithLoneFullStop(message));
 
+        auto const settled = withoutTrailingSpaces(folded);
+        if (settled.ends_with(L"..")) {
+            // Bounding the bite is not enough for a row like this one: taking a single dot off
+            // "Connecting..." leaves "Connecting..", which ends in neither whitespace nor a
+            // lone stop and satisfies every check above while shipping mangled punctuation. So
+            // the expectation here is exact -- the blanks go and not one dot of the run.
+            ++ellipsisRows;
+            CHECK(message == settled);
+        } else if (settled.size() >= 2u && settled.back() == L'.' &&
+                   settled[settled.size() - 2u] == L' ') {
+            // The rows that need the trim to repeat: the stop is hiding a blank, and a single
+            // pass would take the stop and leave the blank against the closing bracket.
+            ++blankBeforeStopRows;
+        }
+
         // Bounded from the other side too: a strip that ran off the end would leave nothing
         // for the brackets, and the result would quietly become the bare code.
-        if (raw.find_first_not_of(L".\r\n\t ") != std::wstring::npos) {
+        if (folded.find_first_not_of(L". ") != std::wstring::npos) {
             CHECK_FALSE(message.empty());
         }
+    };
+
+    for (std::uint32_t code = 0; code < 0x3000u; ++code) {
+        checkTrim(HRESULT_FROM_WIN32(code));
+    }
+
+    // The same rules over the codes that are not win32 errors at all: their text comes from
+    // the COM table instead, which is written by different hands and could be punctuated to
+    // match.
+    for (HRESULT const hr : std::array{S_FALSE, E_FAIL, E_NOTIMPL, E_UNEXPECTED}) {
+        checkTrim(hr);
     }
 
     // A machine with no message table at all would otherwise pass this case having asserted
-    // nothing. Every Windows carrying the resources for this facility holds hundreds.
+    // nothing. Every Windows carrying the resources for this facility holds hundreds. The
+    // other two counts ride along on the failure, so a run that saw neither kind of row says
+    // as much instead of looking like a clean pass over the rows that matter.
+    INFO("ellipsis rows: " << ellipsisRows);
+    INFO("blank-before-stop rows: " << blankBeforeStopRows);
     REQUIRE(examined > 100);
 }
 
@@ -503,6 +564,12 @@ TEST_CASE("win: describeHresult produces the same shape for every hresult") {
     // The strongest invariant that survives a localised Windows, an English one, and a
     // stripped install with no message resource for a given id. It is also the one that
     // catches a branch added later which forgets the code prefix or the closing bracket.
+    //
+    // S_OK is in the list for a reason of its own. Nothing in describeHresult tests SUCCEEDED
+    // or FAILED, and both the logger and the settings writer format
+    // HRESULT_FROM_WIN32(GetLastError()) on paths where the last error may legitimately be
+    // zero. A success code still has to produce a parseable field, or the record loses its
+    // trailing column and whatever reads the log shifts by one.
     std::array const codes{0x00000000u, 0x00000001u, 0x0ABCDEF1u, 0x7FFFFFFFu, 0x80004005u,
                            0x80004001u, 0x8000FFFFu, 0x80070002u, 0x80070005u, 0x8007000Eu,
                            0x80070057u, 0xDEADBEEFu, 0xFFFFFFFFu};
