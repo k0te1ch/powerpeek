@@ -12,11 +12,13 @@
 // `animateTo` reads the clock itself and there is no way to inject a start instant, so no test
 // here can pin a mid-flight value to an exact number. Every timing case instead brackets the
 // call between two steady_clock readings, which traps the start instant in [before, after] and
-// makes three families of tick argument exact on any machine and under any scheduling:
+// makes four families of tick argument exact on any machine and under any scheduling:
 // tick(before) always reads as zero progress, tick(after + duration) always reads as finished,
-// and tick(before + d) for a d below the duration is always still running. Mid-flight cases
-// animate over seconds so that the microseconds animateTo itself costs cannot move the sampled
-// progress. Nothing here sleeps, and nothing reads the clock to produce an expected value.
+// tick(before + d) for a d below the duration is at most d into the animation, and tick(after + d)
+// is at least d into it. A mid-flight value is therefore bounded from either side even though it
+// cannot be pinned, and a case that has to tell two curves apart bounds it from below. Mid-flight
+// cases animate over seconds so that the microseconds animateTo itself costs cannot move the
+// sampled progress. Nothing here sleeps, and nothing reads the clock to produce an expected value.
 
 #include "TestSupport.h"
 
@@ -89,6 +91,21 @@ constexpr float kClosedFormSamples[] = {1e-4f, 1e-3f, 0.01f, 0.05f, 0.2f, 0.5f, 
 // both with about a factor of two in hand.
 constexpr double kClosedFormEpsilon = 1e-4;
 
+// The samples at each curve's flat end, where that absolute epsilon is worth hundreds or
+// thousands of times the quantity it is checking and so pins nothing on its own. They are
+// checked a second time as a fraction of the value they should have. Exit stops at 1e-3 and
+// entrance at 0.99 because past those the solve's own 1e-6 in x is worth as much as the
+// fraction (at the bottom) and a float cannot resolve the shortfall from 1 at all (at the top).
+constexpr float kExitSmallSamples[] = {1e-3f, 0.01f, 0.05f};
+constexpr float kEntranceLateSamples[] = {0.95f, 0.99f};
+
+// Two percent of the value for the exit curve's opening, where the solve's tolerance in x costs
+// 0.2% of it at the tightest sample. Five for the entrance curve's close, where the shortfall
+// from 1 is carried in floats spaced 6e-8 apart -- already 0.2% of the shortfall at 0.99 before
+// the solve has contributed anything.
+constexpr double kExitSmallRelative = 0.02;
+constexpr double kEntranceLateRelative = 0.05;
+
 // Hard against both ends, where linear's own x(t) = 3t^2 - 2t^3 is flat and an inversion has
 // least to work with.
 constexpr float kLinearEndSamples[] = {1e-5f, 1e-4f, 1e-3f, 0.01f,
@@ -97,13 +114,17 @@ constexpr float kLinearEndSamples[] = {1e-5f, 1e-4f, 1e-3f, 0.01f,
 // Linear needs none of that headroom: its x and y are the same polynomial, so the value handed
 // back is the x the solve stopped on and the identity holds to the solve's own tolerance
 // wherever it is sampled -- an order of magnitude tighter than the Bezier inversions can promise.
-constexpr double kIdentityEpsilon = 1e-5;
+// The bound is absolute rather than one of doctest's, which add one to the compared magnitude
+// before scaling: at a sample of 1e-5 that makes the tolerance the whole quantity, so a flat 0
+// passes -- and a flat 0 is precisely what an inversion collapsing onto its bracket returns.
+constexpr float kIdentityTolerance = 1e-6f;
 
-// A finer sweep than the interval and direction cases use, because what this one looks for is a
-// step rather than a wrong value. The largest step any of the three curves genuinely takes at
-// this resolution is the entrance curve's first, a shade under 0.028, and the exit curve's last
-// is the mirror of it. The bound leaves close to half as much again on top of that, and still
-// sits well under the jump an abandoned iteration leaves behind.
+// One pass carries the interval, the direction and the step, and the resolution is set by the
+// last of those: a step check needs samples closer together than the step it looks for. The
+// largest step any of the three curves genuinely takes at this resolution is the entrance
+// curve's first, a shade under 0.028, and the exit curve's last is the mirror of it. The bound
+// leaves close to half as much again on top of that, and still sits well under the jump an
+// abandoned iteration leaves behind.
 constexpr int kSweepSteps = 1024;
 constexpr float kMaxSweepStep = 0.04f;
 
@@ -223,40 +244,6 @@ TEST_CASE("ease: exit is the mirror image of entrance") {
     }
 }
 
-TEST_CASE("ease: no curve ever leaves the unit interval") {
-    // Control points off the unit square give the familiar bouncy easing. Here that would be an
-    // alpha above 1 or a slide offset past its own end position, so the widget visibly pops past
-    // its target and comes back -- and Fluent motion is meant to be non-overshooting. The clamp
-    // on the Newton parameter and the choice of control points are what prevent it.
-    for (auto const& entry : kAllCurves) {
-        CAPTURE(entry.name);
-        for (int i = 0; i <= 128; ++i) {
-            CAPTURE(i);
-            float const y = ease(entry.curve, static_cast<float>(i) / 128.0f);
-            CHECK(y >= 0.0f);
-            CHECK(y <= 1.0f);
-        }
-    }
-}
-
-TEST_CASE("ease: no curve ever goes backwards") {
-    // A curve that dips is the one easing defect users spot immediately without being able to
-    // name it: the highlight brightens, falls back a shade, then brightens again. It is also
-    // what a bad solve produces, since the solve is re-run from scratch for every sampled
-    // progress and nothing forces consistency between neighbouring frames. Non-decreasing
-    // rather than strictly increasing, so a float tie in the flat tails cannot flake.
-    for (auto const& entry : kAllCurves) {
-        CAPTURE(entry.name);
-        float previous = 0.0f;
-        for (int i = 0; i <= 128; ++i) {
-            CAPTURE(i);
-            float const y = ease(entry.curve, static_cast<float>(i) / 128.0f);
-            CHECK(y >= previous);
-            previous = y;
-        }
-    }
-}
-
 TEST_CASE("ease: every curve has all but reached 1 just before the end") {
     // The `t >= 1.0f` early return hands back a perfect 1 whatever the curve underneath does, so
     // a curve that had only climbed to 0.7 by then would look correct at both endpoints and
@@ -285,6 +272,19 @@ TEST_CASE("ease: the entrance curve matches its closed form in the first frames"
         CHECK(ease(Easing::Entrance, sample) ==
               doctest::Approx(entranceExact(sample)).epsilon(kClosedFormEpsilon));
     }
+
+    // Near the top of this curve the only quantity carrying information is what is left to
+    // travel, not the value: at progress 0.99 the curve is 3.4e-5 short of 1 while the loop above
+    // allows 2e-4 either way, so those samples pass whatever the tail does. Pinning the shortfall
+    // to a fraction of itself is what makes them say something. Samples above 0.99 stay out of
+    // this loop -- their shortfall is smaller than the gap between two floats below 1, so the
+    // answer is a flat 1.0f and no bound on it means anything.
+    for (float const sample : kEntranceLateSamples) {
+        CAPTURE(sample);
+        double const shortfall = 1.0 - entranceExact(sample);
+        double const remaining = 1.0 - static_cast<double>(ease(Easing::Entrance, sample));
+        CHECK(std::fabs(remaining - shortfall) <= kEntranceLateRelative * shortfall);
+    }
 }
 
 TEST_CASE("ease: the exit curve matches its closed form in the last frames") {
@@ -299,6 +299,20 @@ TEST_CASE("ease: the exit curve matches its closed form in the last frames") {
         CHECK(ease(Easing::Exit, sample) ==
               doctest::Approx(exitExact(sample)).epsilon(kClosedFormEpsilon));
     }
+
+    // The mirror of the entrance curve's problem, at the other end. This curve opens almost
+    // flat -- at progress 1e-3 it stands at 3.3e-7, against a tolerance of 1e-4 above, so an
+    // answer three hundred times too large would still pass and the opening frames of a
+    // dismissal are pinned by nothing but the interval and monotonicity checks. Here the value
+    // is nowhere near 1, so a float carries it with room to spare and a fraction of the value
+    // is a real bound: the solve's 1e-6 in x costs 0.2% of it at the tightest sample, where
+    // dy/dx is 6.7e-4, leaving a factor of ten in hand.
+    for (float const sample : kExitSmallSamples) {
+        CAPTURE(sample);
+        double const expected = exitExact(sample);
+        CHECK(std::fabs(static_cast<double>(ease(Easing::Exit, sample)) - expected) <=
+              kExitSmallRelative * expected);
+    }
 }
 
 TEST_CASE("ease: linear is the identity at the ends as well as the middle") {
@@ -309,23 +323,31 @@ TEST_CASE("ease: linear is the identity at the ends as well as the middle") {
     // ends are the point -- x(t) is flat at each of them, which is where an inversion that runs
     // out of room lands furthest from the root. Linear is what the code asks for when a value
     // has to track time exactly, so drift here is motion running ahead of its own clock.
+    //
+    // The failure shape at either end is a collapse onto the bracket: a flat 0 at the bottom and
+    // a flat 1 at the top. An absolute bound rules both out, which is exactly what a relative
+    // comparison here cannot do -- see kIdentityTolerance.
     for (float const sample : kLinearEndSamples) {
         CAPTURE(sample);
-        CHECK(ease(Easing::Linear, sample) == doctest::Approx(sample).epsilon(kIdentityEpsilon));
+        CHECK(std::fabs(ease(Easing::Linear, sample) - sample) <= kIdentityTolerance);
     }
 }
 
-TEST_CASE("ease: no curve steps between adjacent frames") {
-    // The shape of a bad solve is a discontinuity rather than a bias, and this is the case that
-    // names it. Every sampled progress is inverted from scratch with nothing tying one frame's
-    // answer to the next, so an inversion that converges for some inputs and gives up for others
-    // draws a curve smooth in places and stepped in between. The step is what the eye catches:
-    // half a percent of error either side of it goes unnoticed and the jump does not.
+TEST_CASE("ease: no curve overshoots, dips or steps between adjacent frames") {
+    // One pass carries the three things a curve must never do, because all three are read off the
+    // same sequence of samples. Control points off the unit square give the familiar bouncy
+    // easing, which here means an alpha above 1 or a slide offset past its own end position: the
+    // widget visibly pops past its target and comes back, and Fluent motion is meant not to. A
+    // curve that dips is the defect users spot at once without being able to name it -- the
+    // highlight brightens, falls back a shade, then brightens again. And the shape of a bad solve
+    // is neither of those but a discontinuity: every sampled progress is inverted from scratch
+    // with nothing tying one frame's answer to the next, so an inversion that converges for some
+    // inputs and gives up for others draws a curve smooth in places and stepped in between. The
+    // step is what the eye catches; half a percent of error either side of it goes unnoticed.
     //
-    // Sampling eight times as finely as the interval and direction cases do is what makes the
-    // bound meaningful, and it also reports the progress a failure happened at closely enough to
-    // say which part of the curve broke. Those two checks are repeated here for that reason
-    // rather than because they are missing.
+    // Non-decreasing rather than strictly increasing, so a float tie in the flat tails cannot
+    // flake. The resolution also reports the progress a failure happened at closely enough to say
+    // which part of the curve broke.
     for (auto const& entry : kAllCurves) {
         CAPTURE(entry.name);
         float previous = 0.0f;
@@ -579,6 +601,51 @@ TEST_CASE("animated: retargeting to the value it already rests at starts nothing
     CHECK(a.value() == doctest::Approx(0.5f));
 }
 
+TEST_CASE("animated: retargeting a running animation to the value it is showing stops it") {
+    // The same waste reached from the busier state, and the one an idle-only guard misses. A
+    // hover fade is started on pointer-enter and reversed on pointer-leave, so a pointer that
+    // crosses a control between two frames sends the second call while the first animation is
+    // still running and the value has not moved off where it began. Neither the
+    // same-destination guard nor an idle-only one catches that, and what falls through is a
+    // whole duration of frames that all render identically, each asking the window for the
+    // next -- a tray application waking for nothing, which is the drain the draw-on-demand loop
+    // exists to avoid. Stopping is also the only correct answer: there is nowhere to travel.
+    SUBCASE("before the first frame") {
+        Animated a(0.0f);
+        a.animateTo(1.0f, kLongDuration);
+        REQUIRE(a.running());
+
+        a.animateTo(0.0f, kLongDuration);
+        CHECK_FALSE(a.running());
+        CHECK(a.value() == 0.0f);
+        CHECK(a.target() == 0.0f);
+
+        // Nothing left behind that a later frame could resurrect.
+        CHECK_FALSE(a.tick(steady_clock::now()));
+        CHECK(a.value() == 0.0f);
+    }
+
+    // Retargeting to a value the animation has travelled to rather than the one it started
+    // from, which is what separates a guard reading the live value from one reading m_from --
+    // and those two are the same number until a frame has been drawn.
+    SUBCASE("part way through") {
+        Animated a(0.0f);
+
+        steady_clock::time_point const before = steady_clock::now();
+        a.animateTo(1.0f, kLongDuration);
+        CHECK(a.tick(before + milliseconds{5000}));
+
+        float const midway = a.value();
+        REQUIRE(midway > 0.0f);
+        REQUIRE(midway < 1.0f);
+
+        a.animateTo(midway, kLongDuration);
+        CHECK_FALSE(a.running());
+        CHECK(a.value() == midway);
+        CHECK(a.target() == midway);
+    }
+}
+
 TEST_CASE("animated: retargeting to the destination it is already heading for is ignored") {
     Animated a(0.0f);
 
@@ -665,27 +732,36 @@ TEST_CASE("animated: a target outside the unit interval is honoured") {
     CHECK_FALSE(a.running());
 }
 
-TEST_CASE("animated: a downward animation settles exactly on the lower target") {
+TEST_CASE("animated: a dismissal runs down the exit curve and settles exactly on zero") {
     // This is the toast's dismissal, which animates its reveal to zero on the exit curve and
-    // feeds the tick result straight into its phase machine. A value that stopped at 0.0001
-    // would leave a ghost of the notification painted over the desktop, and because tick had
-    // already reported it was finished the window would never be asked to redraw and clear it.
+    // feeds the tick result straight into its phase machine. Two separate things break here. A
+    // value that stopped at 0.0001 would leave a ghost of the notification painted over the
+    // desktop, and because tick had already reported it was finished the window would never be
+    // asked to redraw and clear it. And the curve is the one argument to animateTo that nothing
+    // else in this file can see: dropped on the way to the member it is stored in, every
+    // dismissal in the window -- toast, chevron, scrollbar -- would run the entrance curve
+    // instead, tearing away at the start rather than easing out, and still finish on time.
     Animated a(1.0f);
 
     steady_clock::time_point const before = steady_clock::now();
-    a.animateTo(0.0f, kDurationNormal, Easing::Exit);
+    a.animateTo(0.0f, kLongDuration, Easing::Exit);
     steady_clock::time_point const after = steady_clock::now();
 
     CHECK(a.tick(before));
     CHECK(a.value() == 1.0f);
 
-    CHECK(a.tick(before + kDurationNormal / 2));
-    CHECK(a.value() >= 0.0f);
-    CHECK(a.value() <= 1.0f);
+    // Half a duration past the later of the two readings traps progress just above one half,
+    // where the exit curve has covered 11% of the travel and the entrance curve 89%. The two
+    // answers sit at opposite ends of the interval, so this frame tells them apart whatever the
+    // scheduler does -- it would take a two-second stall between two adjacent statements to
+    // bring the exit curve's value anywhere near the bound.
+    CHECK(a.tick(after + kLongDuration / 2));
+    CHECK(a.value() > 0.75f);
+    CHECK(a.value() < 1.0f);
 
     // The lerp runs with a negative span here, but the settling frame assigns the target
     // directly, so landing on exactly zero does not depend on that arithmetic.
-    CHECK_FALSE(a.tick(after + kDurationNormal));
+    CHECK_FALSE(a.tick(after + kLongDuration));
     CHECK(a.value() == 0.0f);
     CHECK_FALSE(a.running());
 }

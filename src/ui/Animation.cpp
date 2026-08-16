@@ -104,12 +104,20 @@ void Animated::animateTo(float target, std::chrono::milliseconds duration, Easin
     if (m_running && m_to == target) {
         return;
     }
-    // Standing still on the value already asked for. Without this, the call starts a full
+    // Standing on the value already asked for. Without this, the call starts a full
     // animation from a value to itself: every frame of it renders identically, and each one
     // asks the window for another. The window draws on demand and idles at no processor time
     // at all, which is what lets it sit in the tray for weeks -- and hover states retarget on
     // every mouse move, so this is the ordinary call rather than a corner case.
-    if (!m_running && m_current == target) {
+    //
+    // The running half matters as much as the idle one and was missed the first time. A
+    // widget half way through a fade, told to go to the value it is passing through, met
+    // neither guard: the one above wants the destination to match, and this one used to want
+    // the animation to be stopped. It fell through to a fresh animation from that value to
+    // itself -- the very thing the guard exists to prevent, started from the busier state.
+    // Snapping rather than returning is what stops the animation that was in flight.
+    if (m_current == target) {
+        snapTo(target);
         return;
     }
     if (duration <= std::chrono::milliseconds::zero()) {
