@@ -54,6 +54,7 @@ public:
     bool asBool(bool fallback = false) const;
     double asNumber(double fallback = 0.0) const;
     int asInt(int fallback = 0) const;
+    // A number that no float can hold falls back too, rather than being cast into one.
     float asFloat(float fallback = 0.0f) const;
     std::string asString(std::string_view fallback = {}) const;
     std::wstring asWide(std::wstring_view fallback = {}) const;

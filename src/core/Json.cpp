@@ -5,6 +5,7 @@
 #include <climits>
 #include <cmath>
 #include <format>
+#include <limits>
 #include <system_error>
 #include <utility>
 #include <variant>
@@ -633,7 +634,27 @@ int Value::asInt(int fallback) const {
 }
 
 float Value::asFloat(float fallback) const {
-    return static_cast<float>(asNumber(static_cast<double>(fallback)));
+    if (kind() != Kind::Number) {
+        return fallback;
+    }
+
+    double const number = std::get<double>(m_storage->data);
+    // Converting a double outside float's range is undefined behaviour rather than an
+    // infinity, and reaching it takes nothing exotic: 1e39 is an unremarkable double that
+    // no float can hold, and the settings file is text the user may edit. Same guard as
+    // asInt, and a NaN falls out of the negated comparison the same way.
+    //
+    // The bound is where the conversion overflows, which is half a float ulp above the
+    // largest float rather than on it: 0x1.fffffe p127 is FLT_MAX, the next value a float
+    // could name is 2^128, and everything below the midpoint between them rounds to FLT_MAX
+    // quite legitimately. Cutting at FLT_MAX instead would reject a number this very file
+    // wrote -- the shortest decimal for FLT_MAX parses back as a double a little above it,
+    // which is exactly what Value(float) stores.
+    constexpr double kFloatOverflow = 0x1.ffffffp+127;
+    if (!(number > -kFloatOverflow && number < kFloatOverflow)) {
+        return fallback;
+    }
+    return static_cast<float>(number);
 }
 
 std::string Value::asString(std::string_view fallback) const {
