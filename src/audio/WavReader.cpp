@@ -69,10 +69,21 @@ WavStatus locateChunks(std::span<std::uint8_t const> image, WaveView& view) {
                                                 sizeof(WAVEFORMATEXTENSIBLE));
             view.format = WAVEFORMATEXTENSIBLE{};
             std::memcpy(&view.format, base + body, copy);
-            if (size == 16) {
+            if (size < sizeof(WAVEFORMATEX)) {
                 // A 16-byte fmt chunk is a PCMWAVEFORMAT, which has no cbSize field at
                 // all -- whatever landed there came from the next chunk's header.
                 view.format.Format.cbSize = 0;
+            } else {
+                // cbSize is the file's claim about how much extension follows it, and the
+                // chunk is what actually arrived; believe the smaller. An 18-byte fmt chunk
+                // announcing the 22 bytes of a WAVE_FORMAT_EXTENSIBLE extension used to be
+                // taken at its word, and the sub-format GUID then read as the zeroes this
+                // struct was cleared to rather than as anything the file ever contained --
+                // which reports a truncated header as an exotic codec instead of as the
+                // truncation it is.
+                auto const present = static_cast<std::uint32_t>(size - sizeof(WAVEFORMATEX));
+                auto const claimed = static_cast<std::uint32_t>(view.format.Format.cbSize);
+                view.format.Format.cbSize = static_cast<WORD>((std::min)(claimed, present));
             }
             haveFormat = true;
         } else if (idIs(id, "data")) {
