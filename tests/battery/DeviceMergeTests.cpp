@@ -52,10 +52,12 @@ std::vector<std::wstring> idsOf(std::vector<DeviceInfo> const& devices) {
 }  // namespace
 
 TEST_CASE("mergeReadings: a poll where every device appears once comes back untouched") {
-    // Every poll that happens today. The case that fails loudest if merging ever turns eager.
-    std::vector<DeviceInfo> const poll{reading(L"pad-a", 80, Fidelity::Exact),
-                                       reading(L"pad-b", 40, Fidelity::Coarse),
-                                       reading(L"pad-c", 10, Fidelity::Exact)};
+    // Every poll that happens today. The case that fails loudest if merging ever turns eager
+    // -- and the ids arrive out of alphabetical order on purpose, so that a merge which sorted
+    // its output, or rebuilt it from a map keyed on the id, could not pass this by accident.
+    std::vector<DeviceInfo> const poll{reading(L"pad-c", 10, Fidelity::Exact),
+                                       reading(L"pad-a", 80, Fidelity::Exact),
+                                       reading(L"pad-b", 40, Fidelity::Coarse)};
 
     std::vector<DeviceInfo> const merged = mergeReadings(poll);
 
@@ -147,25 +149,29 @@ TEST_CASE("mergeReadings: the surviving record takes nothing from the reading it
     // A card describes one reading a provider actually made, right down to the fields where
     // the loser's value looks like the better one. Assembling a record out of the best of both
     // would show a name, a slot and a vendor that no single source ever reported together.
-    DeviceInfo loser = reading(L"pad-a", -1, Fidelity::Exact);
+    // The level is the field this matters most for, so the loser carries the more comfortable
+    // number: 100 against the winner's 12. A merge that took the best of both would report a
+    // full battery for a pad about to go flat -- and the low-level warning would never fire,
+    // because the detector reads the same number the card shows.
+    DeviceInfo loser = reading(L"pad-a", 100, Fidelity::Coarse);
     loser.name = L"Xbox Wireless Controller";
     loser.vendorId = 0x045E;
     loser.productId = 0x0B12;
-    loser.kind = DeviceKind::Gamepad;
+    loser.xinputSlot = 0;
 
-    DeviceInfo winner = reading(L"pad-a", 40, Fidelity::Coarse);
-    winner.name = L"Xbox Controller 1";
+    DeviceInfo winner = reading(L"pad-a", 12, Fidelity::Exact);
+    winner.name = L"Controller (Xbox One For Windows)";
     winner.vendorId = 0;
     winner.productId = 0;
-    winner.xinputSlot = 0;
 
     std::vector<DeviceInfo> const merged = mergeReadings({loser, winner});
 
     REQUIRE(merged.size() == 1);
-    CHECK(merged[0].name == L"Xbox Controller 1");
+    CHECK(merged[0].percent == 12);
+    CHECK(merged[0].name == L"Controller (Xbox One For Windows)");
     CHECK(merged[0].vendorId == 0);
     CHECK(merged[0].productId == 0);
-    CHECK(merged[0].xinputSlot == 0);
+    CHECK(merged[0].xinputSlot == -1);
 }
 
 TEST_CASE("mergeReadings: choosing between readings never invents a battery") {
@@ -180,6 +186,10 @@ TEST_CASE("mergeReadings: choosing between readings never invents a battery") {
     std::vector<DeviceInfo> const merged = mergeReadings({first, second});
 
     REQUIRE(merged.size() == 1);
+    // The level, not just the predicate: with both readings wired, hasBattery() is false
+    // whichever record survives and whatever it is assembled from, so on its own it is an
+    // assertion nothing can fail.
+    CHECK(merged[0].percent == -1);
     CHECK_FALSE(merged[0].hasBattery());
 }
 
@@ -187,16 +197,19 @@ TEST_CASE("mergeReadings: between readings that rank the same, the first one col
     // Source priority is something the caller states by the order it collects in, not
     // something this function decides -- which is how a provider added later declares its own
     // rank without a table naming every provider.
-    DeviceInfo preferred = reading(L"pad-a", 80, Fidelity::Exact);
+    // The first reading carries the *lower* level, so a rule that quietly preferred the larger
+    // number -- which is what a tie-break on percent would be -- fails here instead of passing
+    // for the wrong reason.
+    DeviceInfo preferred = reading(L"pad-a", 55, Fidelity::Exact);
     preferred.name = L"from the source that spoke first";
-    DeviceInfo other = reading(L"pad-a", 55, Fidelity::Exact);
+    DeviceInfo other = reading(L"pad-a", 80, Fidelity::Exact);
     other.name = L"from the one that spoke after";
 
     std::vector<DeviceInfo> const merged = mergeReadings({preferred, other});
 
     REQUIRE(merged.size() == 1);
     CHECK(merged[0].name == L"from the source that spoke first");
-    CHECK(merged[0].percent == 80);
+    CHECK(merged[0].percent == 55);
 }
 
 TEST_CASE("mergeReadings: the survivor stays where the device first appeared") {
@@ -204,14 +217,16 @@ TEST_CASE("mergeReadings: the survivor stays where the device first appeared") {
     // element by element. A merge that put the winner in the winner's slot would reorder the
     // list whenever a rank flipped, and every card would repaint for a poll that changed
     // nothing.
-    std::vector<DeviceInfo> const merged = mergeReadings({reading(L"pad-a", -1, Fidelity::Exact),
-                                                          reading(L"pad-b", 40, Fidelity::Exact),
-                                                          reading(L"pad-a", 70, Fidelity::Exact)});
+    // The device seen twice is the one whose id sorts second, so a merge that ordered its
+    // output by id rather than by arrival would put the pair the other way round.
+    std::vector<DeviceInfo> const merged = mergeReadings({reading(L"pad-b", -1, Fidelity::Exact),
+                                                          reading(L"pad-a", 40, Fidelity::Exact),
+                                                          reading(L"pad-b", 70, Fidelity::Exact)});
 
     REQUIRE(merged.size() == 2);
-    CHECK(merged[0].id == L"pad-a");
+    CHECK(merged[0].id == L"pad-b");
     CHECK(merged[0].percent == 70);
-    CHECK(merged[1].id == L"pad-b");
+    CHECK(merged[1].id == L"pad-a");
 }
 
 TEST_CASE("mergeReadings: three readings of one device collapse to the best of the three") {
