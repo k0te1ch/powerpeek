@@ -421,6 +421,31 @@ TEST_CASE("settings: the thresholds are clamped to a usable band") {
         CHECK(settings.lowThresholdPercent == 30);
         CHECK(settings.criticalThresholdPercent == 1);
     }
+
+    SUBCASE("low beneath its own floor, which sits one above critical's") {
+        // Critical's floor is 1 and it has to stay strictly below the low one, so a
+        // hand-edited low of 1 used to force critical to 1 as well -- and the low-battery
+        // event then never fired for anyone, because the critical alert reached every
+        // reading first. Two is the lowest low that still leaves a percent underneath it.
+        for (char const* const document : {R"json({"lowThresholdPercent": 1})json",
+                                           R"json({"lowThresholdPercent": 0})json",
+                                           R"json({"lowThresholdPercent": -15})json"}) {
+            CAPTURE(document);
+            Settings const settings = loadDocument(dir, document);
+            CHECK(settings.lowThresholdPercent == 2);
+            CHECK(settings.criticalThresholdPercent == 1);
+            CHECK(settings.criticalThresholdPercent < settings.lowThresholdPercent);
+        }
+    }
+
+    SUBCASE("the bottom of the band is usable rather than merely reachable") {
+        // The floor would be worth nothing if landing on it still collapsed the two onto
+        // each other, so the pair a user can actually write down has to survive untouched.
+        Settings const settings = loadDocument(
+            dir, R"json({"lowThresholdPercent": 2, "criticalThresholdPercent": 1})json");
+        CHECK(settings.lowThresholdPercent == 2);
+        CHECK(settings.criticalThresholdPercent == 1);
+    }
 }
 
 TEST_CASE("settings: the critical threshold is forced below the low one") {

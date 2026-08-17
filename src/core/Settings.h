@@ -118,6 +118,10 @@ struct Settings {
     bool includeNonXboxGamepads = false;
 
     int pollIntervalSeconds = 30;
+    // Reading the file keeps the critical threshold strictly below the low one, and keeps
+    // the low one high enough that there is somewhere below it for the critical one to be.
+    // Both alerts on a single reading, and a low alert that can never fire at all, are the
+    // two ways this goes wrong.
     int lowThresholdPercent = 20;
     int criticalThresholdPercent = 10;
 
