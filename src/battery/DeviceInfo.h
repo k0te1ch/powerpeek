@@ -43,8 +43,10 @@ enum class ChargeState {
 };
 
 struct DeviceInfo {
-    // Stable across reconnects of the same physical device. Derived from the WinRT
-    // NonRoamableId where available, otherwise from vendor/product/slot.
+    // Stable across reconnects of the same physical device. The WinRT NonRoamableId where the
+    // device provides one; otherwise vendor and product plus a discriminator -- the slot on
+    // the XInput path, and on the WinRT path an ordinal among the connected devices of the
+    // same model that could not name themselves either.
     std::wstring id;
     std::wstring name;
 
