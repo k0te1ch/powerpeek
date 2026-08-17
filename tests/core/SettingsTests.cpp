@@ -119,7 +119,13 @@ TEST_CASE("settings: the window opacity floor is a contrast floor") {
     // White body text over a white desktop composites to roughly 6:1 at this alpha and to
     // roughly 3:1 at 0.5, so lowering the floor makes the title bar caption unreadable
     // rather than merely prettier.
-    CHECK(peek::kMinimumWindowOpacity == doctest::Approx(0.7f));
+    //
+    // Exact, and against a double literal rather than a float one: the floor is also where
+    // the opacity slider's grid starts, and a grid counted from the float nearest 0.7 puts
+    // its fourth stop on 0.84999996 rather than on the 0.85 its label claims. An approximate
+    // comparison cannot tell the two spellings apart, so narrowing the constant back to a
+    // float would pass unnoticed here.
+    CHECK(peek::kMinimumWindowOpacity == 0.70);
 }
 
 TEST_CASE("settings: each event carries its own defaults") {
@@ -401,6 +407,23 @@ TEST_CASE("settings: a number too large for an int falls back rather than clamps
           30);
 }
 
+TEST_CASE("settings: a number too large for a float falls back rather than clamps") {
+    TempDir dir;
+
+    // Every float setting is clamped the moment it is read, so a read that cast instead of
+    // giving up would not leave an obviously absurd value behind but a plausible one: the
+    // infinity lands on whichever end of the band it is nearest and the file quietly means
+    // something else than it says. Each of these is a value the clamp alone could not
+    // produce from the number in the document.
+    CHECK(loadDocument(dir, R"json({"masterVolume": 1e39})json").masterVolume ==
+          doctest::Approx(0.8f));
+    CHECK(loadDocument(dir, R"json({"windowOpacity": -1e39})json").windowOpacity ==
+          doctest::Approx(1.0f));
+    CHECK(loadDocument(dir, R"json({"events": {"batteryLow": {"volume": -1e39}}})json")
+              .forEvent(NotificationEvent::BatteryLow)
+              .volume == doctest::Approx(0.9f));
+}
+
 TEST_CASE("settings: a fractional number is rounded to the nearest whole one") {
     TempDir dir;
 
@@ -526,9 +549,25 @@ TEST_CASE("settings: the window opacity is held above the contrast floor") {
               doctest::Approx(peek::kMinimumWindowOpacity));
     }
 
-    SUBCASE("just below the floor") {
-        CHECK(loadDocument(dir, R"json({"windowOpacity": 0.69})json").windowOpacity ==
-              doctest::Approx(peek::kMinimumWindowOpacity));
+    SUBCASE("the floor itself, which is what the slider's bottom stop writes") {
+        // Exact rather than approximate: the bound the clamp holds against is the double
+        // floor narrowed at the point of use, so a document holding the floor has to come
+        // back as that same float rather than merely near it.
+        CHECK(loadDocument(dir, R"json({"windowOpacity": 0.7})json").windowOpacity ==
+              static_cast<float>(peek::kMinimumWindowOpacity));
+    }
+
+    SUBCASE("the floor survives being written and read again") {
+        // A user who drags the slider to the bottom would otherwise find the window a shade
+        // different on every start, as the written text read back a hair under the bound and
+        // was pushed up again.
+        std::filesystem::path const file = dir.file(L"settings.json");
+
+        Settings written;
+        written.windowOpacity = static_cast<float>(peek::kMinimumWindowOpacity);
+        REQUIRE(written.save(file));
+
+        CHECK(Settings::load(file).windowOpacity == written.windowOpacity);
     }
 
     SUBCASE("above one") {
@@ -585,9 +624,15 @@ TEST_CASE("settings: enumerations are read by name") {
 TEST_CASE("settings: an unrecognised enumeration name keeps the default") {
     TempDir dir;
 
+    // A name this build cannot place comes either from a hand-edit or from a file a newer
+    // build wrote, and either way the setting has to land on its documented default rather
+    // than on whichever entry the table happens to hold first. One template reads all six
+    // enumerations, so this is the fallback for every one of them.
     SUBCASE("a name that no longer exists") {
         CHECK(loadDocument(dir, R"json({"trayColor": "chartreuse"})json").trayColor ==
               TrayColor::Auto);
+        CHECK(loadDocument(dir, R"json({"toastPosition": "middle"})json").toastPosition ==
+              ToastPosition::BottomRight);
     }
 
     SUBCASE("the empty string") {
@@ -597,6 +642,20 @@ TEST_CASE("settings: an unrecognised enumeration name keeps the default") {
     SUBCASE("the wrong case, because the names are matched byte for byte") {
         CHECK(loadDocument(dir, R"json({"theme": "Dark"})json").theme == ThemePreference::System);
     }
+}
+
+TEST_CASE("settings: the toast positions are numbered in reading order") {
+    // The settings page seeds its combo with static_cast<int>(current.toastPosition) and
+    // stores the choice back as static_cast<ToastPosition>(picked), against a list built
+    // left to right and top row first. Reorder the enumerators and every name in the file
+    // still round-trips, so nothing else in the suite notices -- while the page shows one
+    // corner as selected and saves another the moment it is touched.
+    CHECK(static_cast<int>(ToastPosition::TopLeft) == 0);
+    CHECK(static_cast<int>(ToastPosition::TopCenter) == 1);
+    CHECK(static_cast<int>(ToastPosition::TopRight) == 2);
+    CHECK(static_cast<int>(ToastPosition::BottomLeft) == 3);
+    CHECK(static_cast<int>(ToastPosition::BottomCenter) == 4);
+    CHECK(static_cast<int>(ToastPosition::BottomRight) == 5);
 }
 
 TEST_CASE("settings: every toast position name reads back as its own corner") {
@@ -622,21 +681,6 @@ TEST_CASE("settings: every toast position name reads back as its own corner") {
 
 TEST_CASE("settings: a toast position the build cannot read keeps the bottom right") {
     TempDir dir;
-
-    SUBCASE("a name that does not exist") {
-        CHECK(loadDocument(dir, R"json({"toastPosition": "middle"})json").toastPosition ==
-              ToastPosition::BottomRight);
-    }
-
-    SUBCASE("the empty string") {
-        CHECK(loadDocument(dir, R"json({"toastPosition": ""})json").toastPosition ==
-              ToastPosition::BottomRight);
-    }
-
-    SUBCASE("the wrong case, because the names are matched byte for byte") {
-        CHECK(loadDocument(dir, R"json({"toastPosition": "Bottom-Left"})json").toastPosition ==
-              ToastPosition::BottomRight);
-    }
 
     SUBCASE("a value that is not a string at all") {
         // The ordinal is the tempting thing to hand-edit in, since the settings page lists
@@ -774,13 +818,17 @@ TEST_CASE("settings: a float setting is written in the shortest form that names 
     // a volume the user set to 0.8 has to say 0.8 -- and every slider in the settings page
     // holds a float, so otherwise most of the document is unreadable rather than one line.
     //
-    // Sorted keys put a comma after masterVolume and end the document with windowOpacity,
-    // and volume is the last key of an event block, so each of these is the whole number
-    // rather than the leading digits of a longer one.
-    CHECK(text.find("\"masterVolume\": 0.8,") != std::string::npos);
-    CHECK(text.find("\"windowOpacity\": 0.85\n") != std::string::npos);
-    CHECK(text.find("\"volume\": 0.3\n") != std::string::npos);
+    // Each number is pinned as "the short form is there and the widened one is nowhere in
+    // the document" rather than by the character that follows it. What follows a number is
+    // decided by where its key happens to sort, so anchoring on that would break the case
+    // the day a key sorting after windowOpacity, or an event field sorting after volume, is
+    // added -- with nothing about the writer changed.
+    CHECK(text.find("\"masterVolume\": 0.8") != std::string::npos);
     CHECK(text.find("0.800000011920929") == std::string::npos);
+    CHECK(text.find("\"windowOpacity\": 0.85") != std::string::npos);
+    CHECK(text.find("0.8500000238418579") == std::string::npos);
+    CHECK(text.find("\"volume\": 0.3") != std::string::npos);
+    CHECK(text.find("0.30000001192092896") == std::string::npos);
 
     // Shorter text is worth nothing if it names a different float on the way back, so these
     // are exact rather than approximate: the point of the shortest form is that it is the

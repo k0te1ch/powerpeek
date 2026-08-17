@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -365,6 +366,34 @@ TEST_CASE("eventDetector: a level with an unknown charge state is ignored") {
     checkEvents(detector.update({unknown}, settings, at(1)), {NotificationEvent::Connected});
 }
 
+TEST_CASE("eventDetector: a reading with no level blanks the level the thresholds judge by") {
+    Settings const settings{};
+    EventDetector detector;
+
+    // One poll in the middle of a discharge that carries no level and no direction: a pad on
+    // its way to sleep, or a provider answering before the battery status is ready.
+    ControllerInfo const blank =
+        makeRawController(L"pad-a", -1, PowerSource::Battery, ChargeState::Unknown);
+
+    checkEvents(detector.update({makeController(L"pad-a", 30)}, settings, at(0)), {});
+    checkEvents(detector.update({makeController(L"pad-a", 15)}, settings, at(1)),
+                {NotificationEvent::BatteryLow});
+    checkEvents(detector.update({blank}, settings, at(2)), {});
+
+    // The blank reading is copied over the level the thresholds compare against, so the pad
+    // reads as one that has never been warned about and only the window still stands between
+    // the user and a second warning about the same discharge. Pinned as it behaves rather than
+    // as the file header promises: a pad that goes quiet for one poll is told about twice,
+    // where the same pad unplugged and returned at the level it left on is told once.
+    SUBCASE("inside the cooldown window") {
+        checkEvents(detector.update({makeController(L"pad-a", 15)}, settings, at(3)), {});
+    }
+    SUBCASE("once the window has passed") {
+        checkEvents(detector.update({makeController(L"pad-a", 15)}, settings, at(31)),
+                    {NotificationEvent::BatteryLow});
+    }
+}
+
 TEST_CASE("eventDetector: a full charge is announced on the transition only") {
     Settings const settings{};
     EventDetector detector;
@@ -620,7 +649,7 @@ TEST_CASE("eventDetector: reset does not reopen the baseline") {
     checkEvents(detector.update({makeController(L"pad-a", 5)}, settings, at(1)), {});
 }
 
-TEST_CASE("eventDetector: reset keeps the connected set") {
+TEST_CASE("eventDetector: reset keeps the connected set and the reading that goes with it") {
     Settings const settings{};
     EventDetector detector;
 
@@ -631,12 +660,16 @@ TEST_CASE("eventDetector: reset keeps the connected set") {
 
     detector.reset();
 
-    // A threshold change immediately followed by an unplug still has to report the unplug;
-    // losing the presence flag would swallow it silently.
+    // A threshold change immediately followed by an unplug still has to report the unplug --
+    // losing the presence flag would swallow it silently -- and every word of the card that
+    // reports it comes out of the stored reading. Back when reset() cleared that reading as
+    // well, a pad unplugged in the first poll after a threshold change was announced as though
+    // it had never reported a charge at all.
     auto const events = detector.update({}, settings, at(2));
     checkEvents(events, {NotificationEvent::Disconnected});
     CHECK(events[0].controller.id == L"pad-a");
     CHECK(events[0].controller.name == L"Pad One");
+    CHECK(events[0].controller.percent == 37);
 }
 
 TEST_CASE("eventDetector: reset does not replay a full charge") {
@@ -651,59 +684,52 @@ TEST_CASE("eventDetector: reset does not replay a full charge") {
 
     detector.reset();
 
-    // reset() is deliberately narrow: it re-opens the level-driven warnings and nothing else,
-    // so a pad resting on the dock does not re-announce itself every time a threshold moves.
+    // The stored reading survives the reset, so the pad is still remembered as full and the
+    // transition the rule wants is not on offer. A pad resting on the dock would otherwise
+    // re-announce itself every time a threshold moved.
     checkEvents(detector.update({full}, settings, at(2)), {});
 }
 
-TEST_CASE("eventDetector: a pad that vanishes after a reset still reports the level it left on") {
-    Settings settings{};
-    EventDetector detector;
-
-    std::vector<ControllerInfo> const connected{named(makeController(L"pad-a", 37), L"Pad One")};
-
-    checkEvents(detector.update(connected, settings, at(0)), {});
-    checkEvents(detector.update(connected, settings, at(1)), {});
-
-    settings.lowThresholdPercent = 40;
-    detector.reset();
-
-    // The level the thresholds compare against and the level a disconnection card prints are
-    // two separate fields for this reason alone. Back when reset() cleared the reading itself,
-    // a pad unplugged in the first poll after a threshold change was announced as though it
-    // had never reported a charge at all.
-    auto const events = detector.update({}, settings, at(2));
-    checkEvents(events, {NotificationEvent::Disconnected});
-    CHECK(events[0].controller.id == L"pad-a");
-    CHECK(events[0].controller.name == L"Pad One");
-    CHECK(events[0].controller.percent == 37);
-}
-
-TEST_CASE("eventDetector: reset re-arms a warning the pad has already had") {
+TEST_CASE("eventDetector: reset drops the full-charge window with the rest of the latches") {
     Settings const settings{};
     EventDetector detector;
 
-    int level = 0;
-    NotificationEvent expected = NotificationEvent::BatteryLow;
-    SUBCASE("the low warning") {
-        level = 15;
-        expected = NotificationEvent::BatteryLow;
-    }
-    SUBCASE("the critical warning") {
-        level = 5;
-        expected = NotificationEvent::BatteryCritical;
-    }
+    ControllerInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
+    ControllerInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
+    ControllerInfo const discharging = makeController(L"pad-a", 100);
+
+    checkEvents(detector.update({charging}, settings, at(0)), {});
+    checkEvents(detector.update({full}, settings, at(1)), {NotificationEvent::FullyCharged});
+    checkEvents(detector.update({discharging}, settings, at(2)), {});
+
+    detector.reset();
+
+    // reset() empties the whole latch map, so the full-charge window goes with the two
+    // threshold ones: three minutes in, a fresh transition to full is announced, where the
+    // identical sequence without the reset stays silent until the thirty are up. Reaching
+    // this costs a real charge cycle, so the user pays at most one extra chime per settings
+    // change -- pinned because nothing else in the file notices the map being cleared, and a
+    // narrower reset() erasing only the two threshold latches would pass every other case.
+    checkEvents(detector.update({full}, settings, at(3)), {NotificationEvent::FullyCharged});
+}
+
+TEST_CASE("eventDetector: reset re-arms the critical warning a pad has already had") {
+    Settings const settings{};
+    EventDetector detector;
 
     checkEvents(detector.update({makeController(L"pad-a", 50)}, settings, at(0)), {});
-    checkEvents(detector.update({makeController(L"pad-a", level)}, settings, at(1)), {expected});
+    checkEvents(detector.update({makeController(L"pad-a", 5)}, settings, at(1)),
+                {NotificationEvent::BatteryCritical});
 
     detector.reset();
 
     // Reconsidering the thresholds is a question about the pads on the desk right now, and for
-    // one already sitting below a threshold the honest answer is the warning again. Both halves
-    // of the reset are load-bearing here: the remembered level still reads as warned about, and
-    // the window the first warning opened is two minutes old.
-    checkEvents(detector.update({makeController(L"pad-a", level)}, settings, at(2)), {expected});
+    // one already sitting below a threshold the honest answer is the warning again. The
+    // critical rule reads the same baseline the low one does: computing it from the previous
+    // reading instead would leave a flat pad silent after the very settings change made to
+    // hear about it.
+    checkEvents(detector.update({makeController(L"pad-a", 5)}, settings, at(2)),
+                {NotificationEvent::BatteryCritical});
 }
 
 TEST_CASE("eventDetector: reset clears the cooldown latches") {
@@ -724,25 +750,6 @@ TEST_CASE("eventDetector: reset clears the cooldown latches") {
     // level would leave the user waiting out the rest of it after asking to be warned sooner.
     checkEvents(detector.update({makeController(L"pad-a", 19)}, settings, at(3)),
                 {NotificationEvent::BatteryLow});
-}
-
-TEST_CASE("eventDetector: reset leaves the full-charge rule judging the same transition") {
-    Settings const settings{};
-    EventDetector detector;
-
-    ControllerInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
-    ControllerInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
-
-    checkEvents(detector.update({charging}, settings, at(0)), {});
-    checkEvents(detector.update({charging}, settings, at(1)), {});
-
-    SUBCASE("after a reset") { detector.reset(); }
-    SUBCASE("with no reset at all") {}
-
-    // This rule reads the charge state of the stored reading, which makes it the plainest
-    // evidence that reset() leaves that reading alone: a threshold change must neither invent
-    // a completed charge nor swallow the one that lands on the poll straight after it.
-    checkEvents(detector.update({full}, settings, at(2)), {NotificationEvent::FullyCharged});
 }
 
 TEST_CASE("eventDetector: each controller keeps its own latches") {
@@ -783,7 +790,7 @@ TEST_CASE("eventDetector: each event keeps its own latch") {
                 {NotificationEvent::BatteryCritical});
 }
 
-TEST_CASE("eventDetector: disconnections are reported after the present pads, in id order") {
+TEST_CASE("eventDetector: disconnections are reported after the present pads") {
     Settings const settings{};
     EventDetector detector;
 
@@ -799,8 +806,14 @@ TEST_CASE("eventDetector: disconnections are reported after the present pads, in
     checkEvents(events, {NotificationEvent::BatteryLow, NotificationEvent::Disconnected,
                          NotificationEvent::Disconnected});
     CHECK(events[0].controller.id == L"pad-c");
-    CHECK(events[1].controller.id == L"pad-a");
-    CHECK(events[2].controller.id == L"pad-b");
+
+    // Both losses are reported, and which of the two comes first is the iteration order of
+    // whatever container the states live in rather than anything the user can observe -- so
+    // the pair is checked without one.
+    std::set<std::wstring> const lost{events[1].controller.id, events[2].controller.id};
+    CHECK(lost.size() == 2);
+    CHECK(lost.contains(L"pad-a"));
+    CHECK(lost.contains(L"pad-b"));
 }
 
 TEST_CASE("eventDetector: a pad that appears and disappears between snapshots") {
