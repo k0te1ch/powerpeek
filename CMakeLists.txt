@@ -116,6 +116,7 @@ set(PP_CORE_SOURCES
     core/Win.cpp
     battery/BatteryHistory.cpp
     battery/DeviceInfo.cpp
+    battery/DeviceMerge.cpp
     battery/EventDetector.cpp
     audio/WavReader.cpp
     notify/ToastLayout.cpp

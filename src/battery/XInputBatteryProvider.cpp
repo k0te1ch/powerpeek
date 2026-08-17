@@ -97,6 +97,10 @@ std::vector<DeviceInfo> XInputBatteryProvider::poll() noexcept {
         // There is no supported way to correlate an XInput slot with a WinRT device, so
         // the key is the slot itself and history recorded under it never merges with a
         // WinRT record.
+        // One slot answers separately for BATTERY_DEVTYPE_GAMEPAD and _HEADSET, which are two
+        // physical things. Only the pad is asked for below, so this key is unambiguous today;
+        // whoever adds the headset has to give it a key of its own, or the merge downstream
+        // will fold the headset into the pad and show one card for both.
         info.id = std::format(L"xinput:slot:{}", slot);
         info.name = std::format(L"Xbox Controller {}", slot + 1);
         info.kind = DeviceKind::Gamepad;

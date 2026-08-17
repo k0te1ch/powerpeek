@@ -7,6 +7,7 @@
 #include <mutex>
 #include <thread>
 
+#include "battery/DeviceMerge.h"
 #include "battery/WinRtBatteryProvider.h"
 #include "battery/XInputBatteryProvider.h"
 #include "core/Logger.h"
@@ -134,10 +135,16 @@ void ControllerMonitor::Impl::run() {
                 list = winrtProvider.poll();
             }
             // The two sources cannot be correlated -- an XInput slot carries no device
-            // identity -- so they are never merged; XInput only speaks when WinRT is silent.
+            // identity -- so they are never joined; XInput only speaks when WinRT is silent.
             if (list.empty() && std::chrono::steady_clock::now() - startedAt >= kWinRtGrace) {
                 list = xinputProvider.poll();
             }
+            // What that gate does not prevent is one source describing a device twice. Four
+            // things downstream -- firstSeen below, the event detector's per-device state, the
+            // history log and the card lookup on the devices page -- key on the id and treat it
+            // as an identity without ever checking that it is one. This is where that becomes
+            // true, and it is the seam the providers still to come report into.
+            list = mergeReadings(std::move(list));
             // The setting is about pads specifically: a headset or a mouse is not a
             // third-party gamepad and must not disappear with them.
             if (!includeAll) {
