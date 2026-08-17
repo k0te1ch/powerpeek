@@ -119,7 +119,8 @@ set(PP_CORE_SOURCES
     battery/EventDetector.cpp
     audio/WavReader.cpp
     notify/ToastLayout.cpp
-    ui/Animation.cpp)
+    ui/Animation.cpp
+    ui/Quantise.cpp)
 list(TRANSFORM PP_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/src/")
 
 add_library(PowerPeekCore STATIC ${PP_CORE_SOURCES})

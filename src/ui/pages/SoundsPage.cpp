@@ -72,7 +72,7 @@ void SoundsPage::build(StackPanel& column) {
                                                      next.masterVolume = value;
                                                      m_context.applySettings(std::move(next));
                                                  });
-    masterSlider->setStep(0.05f);
+    masterSlider->setStep(0.05);
     masterSlider->setFormatter(percentLabel);
     master->setControl(std::move(masterSlider));
 
@@ -128,7 +128,7 @@ void SoundsPage::addEvent(StackPanel& column, NotificationEvent event) {
         next.volume = value;
         writeEvent(event, next);
     });
-    volume->setStep(0.05f);
+    volume->setStep(0.05);
     volume->setFormatter(percentLabel);
     rows.volume->setControl(std::move(volume));
 
