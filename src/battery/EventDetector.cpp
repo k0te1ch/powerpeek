@@ -47,9 +47,11 @@ std::vector<DetectedEvent> EventDetector::update(std::vector<ControllerInfo> con
         auto [entry, inserted] = m_states.try_emplace(controller.id);
         ControllerState& state = entry->second;
         ControllerInfo const previous = state.last;
+        int const baseline = state.thresholdBaseline;
         bool const wasPresent = !inserted && state.present;
         state.present = true;
         state.last = controller;
+        state.thresholdBaseline = controller.percent;
 
         // The first snapshot only establishes the baseline. Nothing about it is news: the
         // controller was already on before the application started, and with autostart
@@ -79,9 +81,10 @@ std::vector<DetectedEvent> EventDetector::update(std::vector<ControllerInfo> con
         }
 
         // An unknown previous level counts as "not warned yet", which is what makes a pad
-        // that was already below the threshold while disconnected fire once on return.
-        bool const wasLow = previous.percent >= 0 && previous.percent <= low;
-        bool const wasCritical = previous.percent >= 0 && previous.percent <= critical;
+        // that was already below the threshold while disconnected fire once on return --
+        // and what makes the thresholds report again after reset() clears the baseline.
+        bool const wasLow = baseline >= 0 && baseline <= low;
+        bool const wasCritical = baseline >= 0 && baseline <= critical;
 
         if (controller.percent <= critical) {
             if (!wasCritical) {
@@ -109,11 +112,17 @@ void EventDetector::reset() {
     // next snapshot a fresh baseline, which announces nothing at all, and the one after it
     // would replay a connection chime for every pad that never went anywhere.
     //
-    // What has to go is the remembered level, because that is what suppresses the event:
-    // raising the low threshold above a pad's current level leaves `wasLow` permanently
-    // true, and the warning would then never fire again for as long as the pad stays on.
+    // What has to go is the level the thresholds compare against, because that is what
+    // suppresses the event: raising the low threshold above a pad's current level leaves
+    // `wasLow` permanently true, and the warning would then never fire again for as long
+    // as the pad stays on.
+    //
+    // The reading in `last` is left exactly as it was. It is a different value with a
+    // different job -- the disconnection card names the pad from it and shows the charge
+    // it went away on -- and clearing it here used to cost a pad that vanished in the
+    // first snapshot after a threshold change its level in that card.
     for (auto& [id, state] : m_states) {
-        state.last.percent = -1;
+        state.thresholdBaseline = -1;
         state.lastNotified.clear();
     }
 }

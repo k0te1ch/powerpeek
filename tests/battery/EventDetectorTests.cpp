@@ -656,6 +656,95 @@ TEST_CASE("eventDetector: reset does not replay a full charge") {
     checkEvents(detector.update({full}, settings, at(2)), {});
 }
 
+TEST_CASE("eventDetector: a pad that vanishes after a reset still reports the level it left on") {
+    Settings settings{};
+    EventDetector detector;
+
+    std::vector<ControllerInfo> const connected{named(makeController(L"pad-a", 37), L"Pad One")};
+
+    checkEvents(detector.update(connected, settings, at(0)), {});
+    checkEvents(detector.update(connected, settings, at(1)), {});
+
+    settings.lowThresholdPercent = 40;
+    detector.reset();
+
+    // The level the thresholds compare against and the level a disconnection card prints are
+    // two separate fields for this reason alone. Back when reset() cleared the reading itself,
+    // a pad unplugged in the first poll after a threshold change was announced as though it
+    // had never reported a charge at all.
+    auto const events = detector.update({}, settings, at(2));
+    checkEvents(events, {NotificationEvent::Disconnected});
+    CHECK(events[0].controller.id == L"pad-a");
+    CHECK(events[0].controller.name == L"Pad One");
+    CHECK(events[0].controller.percent == 37);
+}
+
+TEST_CASE("eventDetector: reset re-arms a warning the pad has already had") {
+    Settings const settings{};
+    EventDetector detector;
+
+    int level = 0;
+    NotificationEvent expected = NotificationEvent::BatteryLow;
+    SUBCASE("the low warning") {
+        level = 15;
+        expected = NotificationEvent::BatteryLow;
+    }
+    SUBCASE("the critical warning") {
+        level = 5;
+        expected = NotificationEvent::BatteryCritical;
+    }
+
+    checkEvents(detector.update({makeController(L"pad-a", 50)}, settings, at(0)), {});
+    checkEvents(detector.update({makeController(L"pad-a", level)}, settings, at(1)), {expected});
+
+    detector.reset();
+
+    // Reconsidering the thresholds is a question about the pads on the desk right now, and for
+    // one already sitting below a threshold the honest answer is the warning again. Both halves
+    // of the reset are load-bearing here: the remembered level still reads as warned about, and
+    // the window the first warning opened is two minutes old.
+    checkEvents(detector.update({makeController(L"pad-a", level)}, settings, at(2)), {expected});
+}
+
+TEST_CASE("eventDetector: reset clears the cooldown latches") {
+    Settings const settings{};
+    EventDetector detector;
+
+    checkEvents(detector.update({makeController(L"pad-a", 30)}, settings, at(0)), {});
+    checkEvents(detector.update({makeController(L"pad-a", 19)}, settings, at(1)),
+                {NotificationEvent::BatteryLow});
+    // Back above the threshold but short of the recovery margin, so the remembered level no
+    // longer reads as low while the latch stays put. That is what makes the crossing below a
+    // test of the latches alone rather than of the level reset() clears.
+    checkEvents(detector.update({makeController(L"pad-a", 21)}, settings, at(2)), {});
+
+    detector.reset();
+
+    // Three minutes into a thirty-minute window. A reset that dropped only the remembered
+    // level would leave the user waiting out the rest of it after asking to be warned sooner.
+    checkEvents(detector.update({makeController(L"pad-a", 19)}, settings, at(3)),
+                {NotificationEvent::BatteryLow});
+}
+
+TEST_CASE("eventDetector: reset leaves the full-charge rule judging the same transition") {
+    Settings const settings{};
+    EventDetector detector;
+
+    ControllerInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
+    ControllerInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
+
+    checkEvents(detector.update({charging}, settings, at(0)), {});
+    checkEvents(detector.update({charging}, settings, at(1)), {});
+
+    SUBCASE("after a reset") { detector.reset(); }
+    SUBCASE("with no reset at all") {}
+
+    // This rule reads the charge state of the stored reading, which makes it the plainest
+    // evidence that reset() leaves that reading alone: a threshold change must neither invent
+    // a completed charge nor swallow the one that lands on the poll straight after it.
+    checkEvents(detector.update({full}, settings, at(2)), {NotificationEvent::FullyCharged});
+}
+
 TEST_CASE("eventDetector: each controller keeps its own latches") {
     Settings const settings{};
     EventDetector detector;
