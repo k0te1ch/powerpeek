@@ -118,6 +118,7 @@ set(PP_CORE_SOURCES
     battery/ControllerInfo.cpp
     battery/EventDetector.cpp
     audio/WavReader.cpp
+    notify/ToastLayout.cpp
     ui/Animation.cpp)
 list(TRANSFORM PP_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/src/")
 

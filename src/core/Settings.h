@@ -90,6 +90,24 @@ enum class TrayColor {
     Pink,
 };
 
+// Which corner or edge of the work area the application's own notification cards appear at.
+//
+// Windows notifications are not covered by this and cannot be: the system decides where its
+// own toasts go, and nothing an application does moves them. That is also the reason the
+// setting exists -- an event with both kinds switched on used to put two cards in the same
+// corner, and there was no way to send one of them elsewhere.
+//
+// Read left to right, top row first, so that an index into the list in the settings page is
+// the enumerator with the same value.
+enum class ToastPosition {
+    TopLeft,
+    TopCenter,
+    TopRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+};
+
 struct EventSettings {
     bool enabled = true;
     bool playSound = true;
@@ -132,6 +150,9 @@ struct Settings {
     LanguagePreference language = LanguagePreference::System;
     TrayStyle trayStyle = TrayStyle::Battery;
     TrayColor trayColor = TrayColor::Auto;
+    // Where the application's own cards appear. The bottom right is where they have always
+    // appeared, so an existing installation is not moved by gaining the setting.
+    ToastPosition toastPosition = ToastPosition::BottomRight;
 
     BackdropMode backdrop = BackdropMode::Opaque;
     // Alpha of the window's own background layer, in [kMinimumWindowOpacity, 1]. Fully

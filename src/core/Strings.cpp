@@ -130,6 +130,18 @@ constexpr Entry kTable[] = {
     {Text::TrayColorGreen, L"Green", L"Зелёный"},
     {Text::TrayColorBlue, L"Blue", L"Синий"},
     {Text::TrayColorPink, L"Pink", L"Розовый"},
+    {Text::ToastPositionLabel, L"Notification position", L"Положение уведомлений"},
+    {Text::ToastPositionDesc,
+     L"Where this application's own cards appear. Windows places its own notifications "
+     L"itself, and this setting does not move those.",
+     L"Где появляются собственные карточки приложения. Уведомления Windows расставляет "
+     L"сама, и на них эта настройка не влияет."},
+    {Text::ToastPositionTopLeft, L"Top left", L"Сверху слева"},
+    {Text::ToastPositionTopCenter, L"Top centre", L"Сверху по центру"},
+    {Text::ToastPositionTopRight, L"Top right", L"Сверху справа"},
+    {Text::ToastPositionBottomLeft, L"Bottom left", L"Снизу слева"},
+    {Text::ToastPositionBottomCenter, L"Bottom centre", L"Снизу по центру"},
+    {Text::ToastPositionBottomRight, L"Bottom right", L"Снизу справа"},
     {Text::BackdropLabel, L"Window backdrop", L"Фон окна"},
     {Text::BackdropDesc, L"What shows through behind the window. Only what this system can "
                          L"actually draw is offered.",
