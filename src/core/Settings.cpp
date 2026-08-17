@@ -112,9 +112,9 @@ json::Value toJson(Settings const& settings) {
     root.set("trayStyle", enumName(kTrayStyleNames, settings.trayStyle));
     root.set("trayColor", enumName(kTrayColorNames, settings.trayColor));
     root.set("backdrop", enumName(kBackdropNames, settings.backdrop));
-    root.set("windowOpacity", static_cast<double>(settings.windowOpacity));
+    root.set("windowOpacity", settings.windowOpacity);
 
-    root.set("masterVolume", static_cast<double>(settings.masterVolume));
+    root.set("masterVolume", settings.masterVolume);
 
     root.set("historyEnabled", settings.historyEnabled);
     root.set("historyRetentionDays", settings.historyRetentionDays);
@@ -129,7 +129,7 @@ json::Value toJson(Settings const& settings) {
         node.set("showFlyout", event.showFlyout);
         node.set("showSystemToast", event.showSystemToast);
         node.set("soundFile", narrow(event.soundFile));
-        node.set("volume", static_cast<double>(event.volume));
+        node.set("volume", event.volume);
 
         events.set(kEventKeys[i], std::move(node));
     }

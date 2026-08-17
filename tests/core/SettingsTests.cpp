@@ -661,6 +661,40 @@ TEST_CASE("settings: a cleared sound file is written as an empty string") {
     CHECK(readText(file).find("\"soundFile\": \"\"") != std::string::npos);
 }
 
+TEST_CASE("settings: a float setting is written in the shortest form that names it") {
+    TempDir dir;
+    std::filesystem::path const file = dir.file(L"settings.json");
+
+    Settings written;
+    written.masterVolume = 0.8f;
+    written.windowOpacity = 0.85f;
+    written.forEvent(NotificationEvent::BatteryLow).volume = 0.3f;
+    REQUIRE(written.save(file));
+
+    std::string const text = readText(file);
+
+    // Widening 0.8f to a double gives 0.800000011920929, and a writer handed that double is
+    // right to print every digit of it. The file is meant to be read and edited by hand, so
+    // a volume the user set to 0.8 has to say 0.8 -- and every slider in the settings page
+    // holds a float, so otherwise most of the document is unreadable rather than one line.
+    //
+    // Sorted keys put a comma after masterVolume and end the document with windowOpacity,
+    // and volume is the last key of an event block, so each of these is the whole number
+    // rather than the leading digits of a longer one.
+    CHECK(text.find("\"masterVolume\": 0.8,") != std::string::npos);
+    CHECK(text.find("\"windowOpacity\": 0.85\n") != std::string::npos);
+    CHECK(text.find("\"volume\": 0.3\n") != std::string::npos);
+    CHECK(text.find("0.800000011920929") == std::string::npos);
+
+    // Shorter text is worth nothing if it names a different float on the way back, so these
+    // are exact rather than approximate: the point of the shortest form is that it is the
+    // shortest decimal that still round-trips.
+    Settings const read = Settings::load(file);
+    CHECK(read.masterVolume == 0.8f);
+    CHECK(read.windowOpacity == 0.85f);
+    CHECK(read.forEvent(NotificationEvent::BatteryLow).volume == 0.3f);
+}
+
 TEST_CASE("settings: save then load round-trips every field") {
     TempDir dir;
     std::filesystem::path const file = dir.file(L"settings.json");
