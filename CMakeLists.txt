@@ -139,6 +139,7 @@ set(PP_CORE_SOURCES
     battery/DeviceMerge.cpp
     battery/ChargeReminder.cpp
     battery/DeviceNames.cpp
+    battery/PnpMapping.cpp
     battery/EventDetector.cpp
     battery/HistoryCsv.cpp
     audio/WavReader.cpp
@@ -190,6 +191,7 @@ target_link_libraries(PowerPeek PRIVATE
     mf mfplat mfreadwrite mfuuid   # decoding non-WAV sounds to PCM
     dwmapi          # dark title bar / Win11 backdrop probing
     uxtheme         # dark mode for the few system-drawn surfaces (menus)
+    cfgmgr32        # the device tree, where Bluetooth battery levels live
     shell32         # tray icon, shell links
     shlwapi
     propsys         # AppUserModelID on the Start Menu shortcut

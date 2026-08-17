@@ -24,8 +24,8 @@ enum class PowerSource {
 };
 
 // What the device is, so that a card, a portrait and a tray rule can stop assuming a pad.
-// Every reading available today is a gamepad; the other values exist because the providers
-// that produce them are the next step, not because anything sets them yet.
+// The pad sources always report Gamepad; the device tree reports whatever the Bluetooth class
+// of device says, and Other when it says nothing useful.
 enum class DeviceKind {
     Gamepad,
     Headset,
