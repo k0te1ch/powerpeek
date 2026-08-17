@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 #include "core/Settings.h"
 #include "core/Signal.h"
 #include "core/Win.h"
@@ -41,7 +41,7 @@ public:
     // "TaskbarCreated" message here and the icon is put back.
     void reAdd();
 
-    void update(std::vector<ControllerInfo> const& controllers, Settings const& settings);
+    void update(std::vector<DeviceInfo> const& controllers, Settings const& settings);
 
     // Forwarded from the owner's window procedure for the callback message.
     void handleCallback(WPARAM wparam, LPARAM lparam);

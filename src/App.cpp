@@ -8,8 +8,8 @@
 
 #include "audio/AudioEngine.h"
 #include "battery/BatteryHistory.h"
-#include "battery/ControllerInfo.h"
 #include "battery/ControllerMonitor.h"
+#include "battery/DeviceInfo.h"
 #include "battery/EventDetector.h"
 #include "core/AppPaths.h"
 #include "core/Logger.h"
@@ -58,7 +58,7 @@ struct App::Impl {
 
     platform::SingleInstance singleInstance;
     EventDetector detector;
-    std::vector<ControllerInfo> controllers;
+    std::vector<DeviceInfo> controllers;
 
     std::unique_ptr<BatteryHistory> history;
     std::unique_ptr<notify::NotificationCenter> notifications;
@@ -166,7 +166,7 @@ void App::Impl::connectSignals() {
 }
 
 void App::Impl::onControllersChanged() {
-    std::vector<ControllerInfo> snapshot = monitor->snapshot();
+    std::vector<DeviceInfo> snapshot = monitor->snapshot();
     Settings const& settings = SettingsStore::instance().get();
 
     // Announced before anything is drawn: the sound is the part the user notices, and it
@@ -175,7 +175,7 @@ void App::Impl::onControllersChanged() {
                                                       std::chrono::system_clock::now())) {
         notifications->post(event);
     }
-    for (ControllerInfo const& controller : snapshot) {
+    for (DeviceInfo const& controller : snapshot) {
         history->record(controller);
     }
 

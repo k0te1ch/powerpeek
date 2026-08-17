@@ -1,4 +1,4 @@
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 
 #include "core/Strings.h"
 

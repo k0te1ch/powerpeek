@@ -5,14 +5,14 @@
 #include <string>
 #include <vector>
 
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 #include "core/Settings.h"
 
 namespace peek {
 
 struct DetectedEvent {
     NotificationEvent event;
-    ControllerInfo controller;
+    DeviceInfo controller;
 };
 
 // Turns a stream of controller snapshots into the handful of moments worth announcing.
@@ -28,7 +28,7 @@ public:
     // The first call after construction reports nothing at all -- it only records the
     // baseline -- so launching with a flat controller already connected neither shouts
     // about the battery nor announces a connection that happened before startup.
-    std::vector<DetectedEvent> update(std::vector<ControllerInfo> const& snapshot,
+    std::vector<DetectedEvent> update(std::vector<DeviceInfo> const& snapshot,
                                       Settings const& settings,
                                       std::chrono::system_clock::time_point now);
 
@@ -44,7 +44,7 @@ private:
         // The whole previous reading rather than just the level, because a disconnection
         // has to announce a controller that is no longer in the snapshot -- by name, and
         // with the charge it had when it went.
-        ControllerInfo last;
+        DeviceInfo last;
         // What the low and critical rules compare the new reading against. It tracks
         // last.percent everywhere except through reset(), which clears this one alone.
         // Clearing the reading instead would take the level off the disconnection card:

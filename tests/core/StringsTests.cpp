@@ -41,7 +41,7 @@ Text textAt(std::size_t index) {
 }
 
 // The language is a process-wide global with no getter, so whatever a case here switches to
-// stays switched for the rest of the binary -- and Settings and ControllerInfo read the table
+// stays switched for the rest of the binary -- and Settings and DeviceInfo read the table
 // too. Restoring the value the process starts on keeps cases in other files that never mention
 // a language reading the same strings whatever order doctest runs them in.
 struct LanguageRestored {

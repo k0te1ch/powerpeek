@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "battery/BatteryHistory.h"
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 #include "core/Settings.h"
 #include "core/Win.h"
 #include "notify/NotificationCenter.h"
@@ -52,7 +52,7 @@ public:
 
     // The controller monitor's latest snapshot. Cheap to call at every poll: the pages only
     // rebuild when the set of devices changed, otherwise the gauges animate to the new levels.
-    void setControllers(std::vector<ControllerInfo> controllers);
+    void setControllers(std::vector<DeviceInfo> controllers);
 
     // Raised as (current, previous), matching SettingsStore::changed. Safe to call from a
     // handler this window itself triggered: the rebuild it may need is deferred to the next

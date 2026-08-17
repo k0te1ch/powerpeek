@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "battery/BatteryHistory.h"
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 #include "core/Settings.h"
 #include "core/Win.h"
 #include "notify/NotificationCenter.h"
@@ -16,7 +16,7 @@ namespace peek::ui {
 // owns all of it and outlives the window, so the raw pointers are stable for the page's life.
 struct PageContext {
     // The controller monitor's latest snapshot, kept by the window and refreshed in place.
-    std::vector<ControllerInfo> const* controllers = nullptr;
+    std::vector<DeviceInfo> const* controllers = nullptr;
     BatteryHistory* history = nullptr;
     notify::NotificationCenter* notifications = nullptr;
 

@@ -20,8 +20,9 @@
 namespace {
 
 using peek::ChargeState;
-using peek::ControllerInfo;
 using peek::DetectedEvent;
+using peek::DeviceInfo;
+using peek::DeviceKind;
 using peek::EventDetector;
 using peek::NotificationEvent;
 using peek::PowerSource;
@@ -38,21 +39,22 @@ std::chrono::system_clock::time_point at(int minutes) {
 // makeController always builds a battery-powered pad that says it is discharging, which is
 // exactly the shape this unit acts on. The readings it has to ignore -- a wired pad with no
 // level, a pad whose direction is unknown, an entry with no id -- have to be built by hand.
-ControllerInfo makeRawController(std::wstring id, int percent, PowerSource source,
-                                 ChargeState charge) {
-    ControllerInfo controller;
+DeviceInfo makeRawController(std::wstring id, int percent, PowerSource source,
+                             ChargeState charge) {
+    DeviceInfo controller;
     controller.name = id;
     controller.id = std::move(id);
     controller.percent = percent;
     controller.source = source;
     controller.charge = charge;
+    controller.kind = DeviceKind::Gamepad;
     controller.isXboxController = true;
     return controller;
 }
 
 // makeController names a pad after its own id, so a case asking which pad a notification
 // describes has to give it a name that cannot be confused with one.
-ControllerInfo named(ControllerInfo controller, std::wstring name) {
+DeviceInfo named(DeviceInfo controller, std::wstring name) {
     controller.name = std::move(name);
     return controller;
 }
@@ -96,7 +98,7 @@ TEST_CASE("eventDetector: the first update only records a baseline") {
 
     // Deep inside critical and still silent: the pad was flat before the process started, and
     // with autostart on the alternative is a warning at every single login.
-    std::vector<ControllerInfo> const snapshot{makeController(L"pad-a", 5)};
+    std::vector<DeviceInfo> const snapshot{makeController(L"pad-a", 5)};
 
     checkEvents(detector.update(snapshot, settings, at(0)), {});
     // The baseline was recorded rather than merely skipped, so the same reading is still not
@@ -345,7 +347,7 @@ TEST_CASE("eventDetector: a wired pad with no battery never warns") {
 
     // No level at all, which is what a wired pad reports. Reading that as an empty battery
     // would fire a critical warning at every wired pad on the machine.
-    ControllerInfo const wired =
+    DeviceInfo const wired =
         makeRawController(L"pad-wired", -1, PowerSource::Wired, ChargeState::Unknown);
 
     checkEvents(detector.update({}, settings, at(0)), {});
@@ -359,7 +361,7 @@ TEST_CASE("eventDetector: a level with an unknown charge state is ignored") {
 
     // The level is only trusted when the pad says it is draining it: a reading whose
     // direction is unknown must not be treated as a falling one.
-    ControllerInfo const unknown =
+    DeviceInfo const unknown =
         makeRawController(L"pad-a", 5, PowerSource::Battery, ChargeState::Unknown);
 
     checkEvents(detector.update({}, settings, at(0)), {});
@@ -372,7 +374,7 @@ TEST_CASE("eventDetector: a reading with no level blanks the level the threshold
 
     // One poll in the middle of a discharge that carries no level and no direction: a pad on
     // its way to sleep, or a provider answering before the battery status is ready.
-    ControllerInfo const blank =
+    DeviceInfo const blank =
         makeRawController(L"pad-a", -1, PowerSource::Battery, ChargeState::Unknown);
 
     checkEvents(detector.update({makeController(L"pad-a", 30)}, settings, at(0)), {});
@@ -398,8 +400,8 @@ TEST_CASE("eventDetector: a full charge is announced on the transition only") {
     Settings const settings{};
     EventDetector detector;
 
-    ControllerInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
-    ControllerInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
+    DeviceInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
+    DeviceInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
 
     checkEvents(detector.update({charging}, settings, at(0)), {});
     checkEvents(detector.update({full}, settings, at(1)), {NotificationEvent::FullyCharged});
@@ -411,9 +413,9 @@ TEST_CASE("eventDetector: the full-charge announcement respects the cooldown") {
     Settings const settings{};
     EventDetector detector;
 
-    ControllerInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
-    ControllerInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
-    ControllerInfo const discharging = makeController(L"pad-a", 100);
+    DeviceInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
+    DeviceInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
+    DeviceInfo const discharging = makeController(L"pad-a", 100);
 
     checkEvents(detector.update({charging}, settings, at(0)), {});
     checkEvents(detector.update({full}, settings, at(1)), {NotificationEvent::FullyCharged});
@@ -436,9 +438,9 @@ TEST_CASE("eventDetector: a full pad with no level still announces") {
 
     // A real reading: the provider reports a finished charge from the battery status and
     // fills the percentage in only when the capacity figures parse.
-    ControllerInfo const charging =
+    DeviceInfo const charging =
         makeRawController(L"pad-a", -1, PowerSource::Battery, ChargeState::Charging);
-    ControllerInfo const full =
+    DeviceInfo const full =
         makeRawController(L"pad-a", -1, PowerSource::Battery, ChargeState::Full);
 
     checkEvents(detector.update({charging}, settings, at(0)), {});
@@ -453,7 +455,7 @@ TEST_CASE("eventDetector: a disconnection is announced once, carrying the last r
     Settings const settings{};
     EventDetector detector;
 
-    std::vector<ControllerInfo> const connected{named(makeController(L"pad-a", 37), L"Pad One")};
+    std::vector<DeviceInfo> const connected{named(makeController(L"pad-a", 37), L"Pad One")};
 
     checkEvents(detector.update(connected, settings, at(0)), {});
 
@@ -653,7 +655,7 @@ TEST_CASE("eventDetector: reset keeps the connected set and the reading that goe
     Settings const settings{};
     EventDetector detector;
 
-    std::vector<ControllerInfo> const connected{named(makeController(L"pad-a", 37), L"Pad One")};
+    std::vector<DeviceInfo> const connected{named(makeController(L"pad-a", 37), L"Pad One")};
 
     checkEvents(detector.update(connected, settings, at(0)), {});
     checkEvents(detector.update(connected, settings, at(1)), {});
@@ -676,8 +678,8 @@ TEST_CASE("eventDetector: reset does not replay a full charge") {
     Settings const settings{};
     EventDetector detector;
 
-    ControllerInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
-    ControllerInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
+    DeviceInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
+    DeviceInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
 
     checkEvents(detector.update({charging}, settings, at(0)), {});
     checkEvents(detector.update({full}, settings, at(1)), {NotificationEvent::FullyCharged});
@@ -694,9 +696,9 @@ TEST_CASE("eventDetector: reset drops the full-charge window with the rest of th
     Settings const settings{};
     EventDetector detector;
 
-    ControllerInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
-    ControllerInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
-    ControllerInfo const discharging = makeController(L"pad-a", 100);
+    DeviceInfo const charging = makeController(L"pad-a", 90, ChargeState::Charging);
+    DeviceInfo const full = makeController(L"pad-a", 100, ChargeState::Full);
+    DeviceInfo const discharging = makeController(L"pad-a", 100);
 
     checkEvents(detector.update({charging}, settings, at(0)), {});
     checkEvents(detector.update({full}, settings, at(1)), {NotificationEvent::FullyCharged});
@@ -756,11 +758,11 @@ TEST_CASE("eventDetector: each controller keeps its own latches") {
     Settings const settings{};
     EventDetector detector;
 
-    std::vector<ControllerInfo> const bothHealthy{makeController(L"pad-a", 50),
+    std::vector<DeviceInfo> const bothHealthy{makeController(L"pad-a", 50),
                                                   makeController(L"pad-b", 50)};
-    std::vector<ControllerInfo> const aLow{makeController(L"pad-a", 15),
+    std::vector<DeviceInfo> const aLow{makeController(L"pad-a", 15),
                                            makeController(L"pad-b", 50)};
-    std::vector<ControllerInfo> const bothLow{makeController(L"pad-a", 15),
+    std::vector<DeviceInfo> const bothLow{makeController(L"pad-a", 15),
                                               makeController(L"pad-b", 15)};
 
     checkEvents(detector.update(bothHealthy, settings, at(0)), {});
@@ -794,7 +796,7 @@ TEST_CASE("eventDetector: disconnections are reported after the present pads") {
     Settings const settings{};
     EventDetector detector;
 
-    std::vector<ControllerInfo> const three{makeController(L"pad-a", 30),
+    std::vector<DeviceInfo> const three{makeController(L"pad-a", 30),
                                             makeController(L"pad-b", 30),
                                             makeController(L"pad-c", 30)};
 
@@ -820,8 +822,8 @@ TEST_CASE("eventDetector: a pad that appears and disappears between snapshots") 
     Settings const settings{};
     EventDetector detector;
 
-    std::vector<ControllerInfo> const alone{makeController(L"pad-a", 30)};
-    std::vector<ControllerInfo> const both{makeController(L"pad-a", 30),
+    std::vector<DeviceInfo> const alone{makeController(L"pad-a", 30)};
+    std::vector<DeviceInfo> const both{makeController(L"pad-a", 30),
                                            makeController(L"pad-b", 30)};
 
     checkEvents(detector.update(alone, settings, at(0)), {});
@@ -859,7 +861,7 @@ TEST_CASE("eventDetector: an entry with no id is ignored") {
 
     // An entry that cannot be told apart from the next one would be tracked under the empty
     // string, connecting and disconnecting as unidentifiable entries came and went.
-    ControllerInfo const nameless =
+    DeviceInfo const nameless =
         makeRawController(L"", 5, PowerSource::Battery, ChargeState::Discharging);
 
     checkEvents(detector.update({}, settings, at(0)), {});
@@ -885,7 +887,7 @@ TEST_CASE("eventDetector: the same pad listed twice in one snapshot connects onc
 
     // The two providers are kept apart upstream today, but a snapshot that ever did carry one
     // pad twice would double every chime it earns unless the loop is idempotent within a poll.
-    ControllerInfo const pad = makeController(L"pad-a", 15);
+    DeviceInfo const pad = makeController(L"pad-a", 15);
     checkEvents(detector.update({pad, pad}, settings, at(1)),
                 {NotificationEvent::Connected, NotificationEvent::BatteryLow});
 }

@@ -126,9 +126,9 @@ void applyMenuTheme() {
 // the one that will interrupt play. A pad with nothing to report -- wired, or a level the
 // source never gave -- is not a candidate: counting it would let a plugged-in pad pull the
 // icon to nothing while a half-empty wireless one sat next to it.
-ControllerInfo const* lowestBattery(std::vector<ControllerInfo> const& controllers) {
-    ControllerInfo const* lowest = nullptr;
-    for (ControllerInfo const& controller : controllers) {
+DeviceInfo const* lowestBattery(std::vector<DeviceInfo> const& controllers) {
+    DeviceInfo const* lowest = nullptr;
+    for (DeviceInfo const& controller : controllers) {
         if (!controller.hasBattery()) {
             continue;
         }
@@ -148,7 +148,7 @@ bool sameColor(D2D1_COLOR_F const& a, D2D1_COLOR_F const& b) {
     return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
 
-std::wstring describeLevel(ControllerInfo const& controller) {
+std::wstring describeLevel(DeviceInfo const& controller) {
     if (controller.percent < 0) {
         return std::wstring(toString(controller.source));
     }
@@ -166,7 +166,7 @@ std::wstring describeLevel(ControllerInfo const& controller) {
     return level;
 }
 
-std::wstring describeController(ControllerInfo const& controller) {
+std::wstring describeController(DeviceInfo const& controller) {
     std::wstring line = controller.name;
     line += L" \x2014 ";
     line += describeLevel(controller);
@@ -188,7 +188,7 @@ std::wstring omittedNotice(std::size_t omitted) {
     return formatText(Text::TrayMoreControllers, omitted);
 }
 
-std::wstring buildTooltip(std::vector<ControllerInfo> const& controllers) {
+std::wstring buildTooltip(std::vector<DeviceInfo> const& controllers) {
     std::wstring tip(text(Text::AppName));
     if (controllers.empty()) {
         appendLine(tip, std::wstring(text(Text::NoControllers)), kTipCapacity);
@@ -196,7 +196,7 @@ std::wstring buildTooltip(std::vector<ControllerInfo> const& controllers) {
     }
 
     std::size_t shown = 0;
-    for (ControllerInfo const& controller : controllers) {
+    for (DeviceInfo const& controller : controllers) {
         // Room for the notice is reserved before the line goes in. Discovering afterwards
         // that it no longer fits would leave a list that is short without saying so.
         std::size_t const rest = controllers.size() - shown - 1;
@@ -245,7 +245,7 @@ struct TrayIcon::Impl {
     void fillCommon(NOTIFYICONDATAW& data) const;
     void applyIcon(HICON next);
     // True when a new bitmap was installed, which also carries the current tooltip.
-    bool refreshIcon(std::vector<ControllerInfo> const& controllers, Settings const& settings);
+    bool refreshIcon(std::vector<DeviceInfo> const& controllers, Settings const& settings);
     void showMenu(POINT screen);
     void scheduleRetry();
     void cancelRetry();
@@ -376,9 +376,9 @@ void TrayIcon::Impl::applyIcon(HICON next) {
     }
 }
 
-bool TrayIcon::Impl::refreshIcon(std::vector<ControllerInfo> const& controllers,
+bool TrayIcon::Impl::refreshIcon(std::vector<DeviceInfo> const& controllers,
                                  Settings const& settings) {
-    ControllerInfo const* const subject = lowestBattery(controllers);
+    DeviceInfo const* const subject = lowestBattery(controllers);
 
     SIZE const wanted = requestedIconSize(owner);
     bool const wantDark = taskbarIsDark();
@@ -527,7 +527,7 @@ void TrayIcon::reAdd() {
     m_impl->install();
 }
 
-void TrayIcon::update(std::vector<ControllerInfo> const& controllers, Settings const& settings) {
+void TrayIcon::update(std::vector<DeviceInfo> const& controllers, Settings const& settings) {
     std::wstring tip = buildTooltip(controllers);
     bool const tipChanged = tip != m_impl->tip;
     m_impl->tip = std::move(tip);

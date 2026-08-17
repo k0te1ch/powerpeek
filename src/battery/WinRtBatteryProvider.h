@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 
 namespace peek {
 
@@ -34,7 +34,7 @@ public:
 
     void stop() noexcept;
 
-    std::vector<ControllerInfo> poll();
+    std::vector<DeviceInfo> poll();
 
 private:
     struct Impl;

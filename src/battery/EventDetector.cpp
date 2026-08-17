@@ -13,7 +13,7 @@ constexpr int kRecoveryMarginPercent = 5;
 
 }  // namespace
 
-std::vector<DetectedEvent> EventDetector::update(std::vector<ControllerInfo> const& snapshot,
+std::vector<DetectedEvent> EventDetector::update(std::vector<DeviceInfo> const& snapshot,
                                                  Settings const& settings,
                                                  std::chrono::system_clock::time_point now) {
     std::vector<DetectedEvent> events;
@@ -22,7 +22,7 @@ std::vector<DetectedEvent> EventDetector::update(std::vector<ControllerInfo> con
     int const low = std::clamp(settings.lowThresholdPercent, 0, 100);
     int const critical = std::clamp(settings.criticalThresholdPercent, 0, low);
 
-    auto fire = [&](NotificationEvent event, ControllerInfo const& controller,
+    auto fire = [&](NotificationEvent event, DeviceInfo const& controller,
                     ControllerState& state, bool rateLimited) {
         if (!settings.forEvent(event).enabled) {
             return;
@@ -38,7 +38,7 @@ std::vector<DetectedEvent> EventDetector::update(std::vector<ControllerInfo> con
 
     std::set<std::wstring> present;
 
-    for (ControllerInfo const& controller : snapshot) {
+    for (DeviceInfo const& controller : snapshot) {
         if (controller.id.empty()) {
             continue;
         }
@@ -46,7 +46,7 @@ std::vector<DetectedEvent> EventDetector::update(std::vector<ControllerInfo> con
 
         auto [entry, inserted] = m_states.try_emplace(controller.id);
         ControllerState& state = entry->second;
-        ControllerInfo const previous = state.last;
+        DeviceInfo const previous = state.last;
         int const baseline = state.thresholdBaseline;
         bool const wasPresent = !inserted && state.present;
         state.present = true;

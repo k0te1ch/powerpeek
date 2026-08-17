@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 
 // doctest prints an operand by streaming it, and there is no operator<< from std::wstring to
 // a narrow stream. Without these two, every failed comparison of a controller id or a
@@ -60,8 +60,8 @@ private:
 };
 
 // A connected Xbox pad running on its battery, with everything else left at its default.
-ControllerInfo makeController(std::wstring id, int percent,
-                              ChargeState charge = ChargeState::Discharging);
+DeviceInfo makeController(std::wstring id, int percent,
+                          ChargeState charge = ChargeState::Discharging);
 
 // A fixed instant, so that a test which drives time forward tests the same instants on every
 // run. Nothing in this suite may call system_clock::now(): the units that care about time all

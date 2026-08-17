@@ -148,7 +148,7 @@ void HistoryPage::build(StackPanel& column) {
         invalidateContent();
     }));
 
-    ControllerInfo const& selected = controllers[static_cast<std::size_t>(m_controller)];
+    DeviceInfo const& selected = controllers[static_cast<std::size_t>(m_controller)];
     auto const span = kRanges[static_cast<std::size_t>(m_range)].window;
     auto const now = std::chrono::system_clock::now();
     auto const cutoff = now - span;

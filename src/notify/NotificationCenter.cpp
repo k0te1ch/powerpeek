@@ -36,7 +36,7 @@ Text titleTextFor(NotificationEvent event) {
     return Text::AppName;
 }
 
-std::wstring makeTitle(NotificationEvent event, ControllerInfo const& controller) {
+std::wstring makeTitle(NotificationEvent event, DeviceInfo const& controller) {
     Text const id = titleTextFor(event);
     // Only the connection events name the controller in the title; for the rest the
     // headline is the condition and the name belongs in the body.
@@ -46,7 +46,7 @@ std::wstring makeTitle(NotificationEvent event, ControllerInfo const& controller
     return std::wstring(text(id));
 }
 
-std::wstring makeBody(ControllerInfo const& controller) {
+std::wstring makeBody(DeviceInfo const& controller) {
     if (controller.percent < 0) {
         return formatText(Text::ToastBodyNoLevel, controller.name);
     }
@@ -77,14 +77,14 @@ Appearance appearanceFor(NotificationEvent event) {
 
 // One tag per event per controller, so a controller sitting on the low threshold replaces
 // its own card while a second controller still gets one of its own.
-std::wstring toastTag(NotificationEvent event, ControllerInfo const& controller) {
+std::wstring toastTag(NotificationEvent event, DeviceInfo const& controller) {
     auto const hash = static_cast<unsigned>(std::hash<std::wstring>{}(controller.id));
     wchar_t buffer[24]{};
     std::swprintf(buffer, std::size(buffer), L"%zu-%08x", index(event), hash);
     return buffer;
 }
 
-ToastContent makeContent(NotificationEvent event, ControllerInfo const& controller) {
+ToastContent makeContent(NotificationEvent event, DeviceInfo const& controller) {
     ToastContent content;
     content.title = makeTitle(event, controller);
     content.body = makeBody(controller);
@@ -104,13 +104,14 @@ ToastContent makeContent(NotificationEvent event, ControllerInfo const& controll
     return content;
 }
 
-ControllerInfo previewController(NotificationEvent event, Settings const& settings) {
-    ControllerInfo controller;
+DeviceInfo previewController(NotificationEvent event, Settings const& settings) {
+    DeviceInfo controller;
     controller.id = L"preview";
     controller.name = kPreviewController;
     controller.fidelity = Fidelity::Exact;
     controller.source = PowerSource::Battery;
     controller.charge = ChargeState::Discharging;
+    controller.kind = DeviceKind::Gamepad;
     controller.isXboxController = true;
 
     switch (event) {
@@ -144,7 +145,7 @@ struct NotificationCenter::Impl {
 
     audio::PcmClip const& clipFor(NotificationEvent event);
     void playFor(NotificationEvent event);
-    void deliver(NotificationEvent event, ControllerInfo const& controller, bool ignoreEnabled);
+    void deliver(NotificationEvent event, DeviceInfo const& controller, bool ignoreEnabled);
 };
 
 audio::PcmClip const& NotificationCenter::Impl::clipFor(NotificationEvent event) {
@@ -183,7 +184,7 @@ void NotificationCenter::Impl::playFor(NotificationEvent event) {
 }
 
 void NotificationCenter::Impl::deliver(NotificationEvent event,
-                                       ControllerInfo const& controller,
+                                       DeviceInfo const& controller,
                                        bool ignoreEnabled) {
     EventSettings const& config = settings.forEvent(event);
     if (!config.enabled && !ignoreEnabled) {

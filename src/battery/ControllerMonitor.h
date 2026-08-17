@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 #include "core/Win.h"
 
 namespace peek {
@@ -38,7 +38,7 @@ public:
     void refreshNow();
 
     // The most recent reading. Safe to call from any thread.
-    std::vector<ControllerInfo> snapshot() const;
+    std::vector<DeviceInfo> snapshot() const;
 
 private:
     struct Impl;
