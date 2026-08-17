@@ -54,14 +54,15 @@ TempDir::~TempDir() {
     std::filesystem::remove_all(m_path, ec);
 }
 
-ControllerInfo makeController(std::wstring id, int percent, ChargeState charge) {
-    ControllerInfo controller;
+DeviceInfo makeController(std::wstring id, int percent, ChargeState charge) {
+    DeviceInfo controller;
     controller.name = id;
     controller.id = std::move(id);
     controller.percent = percent;
     controller.charge = charge;
     controller.source = PowerSource::Battery;
     controller.fidelity = Fidelity::Exact;
+    controller.kind = DeviceKind::Gamepad;
     controller.isXboxController = true;
     controller.firstSeen = testEpoch();
     controller.lastUpdate = testEpoch();

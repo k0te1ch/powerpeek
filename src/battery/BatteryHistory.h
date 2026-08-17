@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 
 namespace peek {
 
@@ -33,7 +33,7 @@ public:
     void setRetention(std::chrono::days retention);
 
     // Records the reading if it differs from the last one for that controller.
-    void record(ControllerInfo const& controller);
+    void record(DeviceInfo const& controller);
 
     // Samples for one controller, oldest first, limited to the retention window.
     std::vector<HistorySample> samplesFor(std::wstring const& controllerId) const;
@@ -43,7 +43,7 @@ public:
     std::optional<double> drainPercentPerHour(std::wstring const& controllerId) const;
 
     // Projected time until the battery reaches zero at the current drain rate.
-    std::optional<std::chrono::minutes> estimatedRemaining(ControllerInfo const& controller) const;
+    std::optional<std::chrono::minutes> estimatedRemaining(DeviceInfo const& controller) const;
 
     // Drops samples older than the retention window and rewrites the file. Called at
     // startup rather than on every append.

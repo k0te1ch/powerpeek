@@ -48,7 +48,7 @@ constexpr bool isBluetoothProductId(std::uint16_t pid) noexcept {
 
 // Nothing at all rather than a guess: claiming the wrong transport is worse than staying quiet.
 // The badge on the portrait and the status line both come from here, so they cannot disagree.
-ControllerLink connectionLink(ControllerInfo const& info) {
+ControllerLink connectionLink(DeviceInfo const& info) {
     if (info.source == PowerSource::Wired) {
         return ControllerLink::Usb;
     }
@@ -75,14 +75,14 @@ std::optional<std::wstring_view> connectionText(ControllerLink link) {
     return std::nullopt;
 }
 
-std::wstring_view chargeText(ControllerInfo const& info) {
+std::wstring_view chargeText(DeviceInfo const& info) {
     if (info.charge == ChargeState::Unknown && info.source == PowerSource::Wired) {
         return text(Text::StatusWired);
     }
     return toString(info.charge);
 }
 
-std::wstring statusLine(ControllerInfo const& info) {
+std::wstring statusLine(DeviceInfo const& info) {
     std::wstring line;
     if (auto const connection = connectionText(connectionLink(info))) {
         line.append(*connection);
@@ -92,7 +92,7 @@ std::wstring statusLine(ControllerInfo const& info) {
     return line;
 }
 
-std::wstring updatedLine(ControllerInfo const& info) {
+std::wstring updatedLine(DeviceInfo const& info) {
     auto const age = std::chrono::system_clock::now() - info.lastUpdate;
     auto const minutes = std::chrono::duration_cast<std::chrono::minutes>(age).count();
     if (minutes <= 0) {
@@ -107,7 +107,7 @@ std::wstring updatedLine(ControllerInfo const& info) {
 // than jumping to it.
 class ControllerCard : public Widget {
 public:
-    ControllerCard(ControllerInfo const& info, std::optional<std::chrono::minutes> remaining) {
+    ControllerCard(DeviceInfo const& info, std::optional<std::chrono::minutes> remaining) {
         m_name.setStyle(TypeStyle::BodyStrong);
         m_status.setStyle(TypeStyle::Body);
         m_approximate.setStyle(TypeStyle::Caption);
@@ -119,7 +119,7 @@ public:
 
     std::wstring const& id() const noexcept { return m_id; }
 
-    void update(ControllerInfo const& info, std::optional<std::chrono::minutes> remaining) {
+    void update(DeviceInfo const& info, std::optional<std::chrono::minutes> remaining) {
         apply(info, remaining);
         m_fill.animateTo(fraction(info), kDurationSlow, Easing::Entrance);
         invalidateLayout();
@@ -202,7 +202,7 @@ public:
     }
 
 private:
-    static float fraction(ControllerInfo const& info) {
+    static float fraction(DeviceInfo const& info) {
         return info.percent < 0 ? 0.0f : static_cast<float>(info.percent) / 100.0f;
     }
 
@@ -214,7 +214,7 @@ private:
         return availableWidth - used;
     }
 
-    void apply(ControllerInfo const& info, std::optional<std::chrono::minutes> remaining) {
+    void apply(DeviceInfo const& info, std::optional<std::chrono::minutes> remaining) {
         m_id = info.id;
         m_percent = info.percent;
         m_charging = info.charge == ChargeState::Charging;
@@ -318,7 +318,7 @@ void ControllersPage::refreshValues() {
     for (auto* card : m_cards) {
         auto const found = std::find_if(
             controllers.begin(), controllers.end(),
-            [card](ControllerInfo const& info) { return info.id == card->id(); });
+            [card](DeviceInfo const& info) { return info.id == card->id(); });
         if (found != controllers.end()) {
             card->update(*found, remainingFor(*found));
         }
@@ -326,7 +326,7 @@ void ControllersPage::refreshValues() {
 }
 
 std::optional<std::chrono::minutes> ControllersPage::remainingFor(
-    ControllerInfo const& controller) const {
+    DeviceInfo const& controller) const {
     if (!m_context.history || !controller.hasBattery()) {
         return std::nullopt;
     }

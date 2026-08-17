@@ -7,6 +7,7 @@
 #include <mutex>
 #include <thread>
 
+#include "battery/DeviceMerge.h"
 #include "battery/WinRtBatteryProvider.h"
 #include "battery/XInputBatteryProvider.h"
 #include "core/Logger.h"
@@ -31,14 +32,14 @@ constexpr std::chrono::seconds kWinRtGrace = 5s;
 // fallback probe, whose own per-slot cache keeps it to a handful of calls.
 constexpr std::chrono::seconds kIdleInterval = 30s;
 
-bool sameReading(ControllerInfo const& a, ControllerInfo const& b) noexcept {
+bool sameReading(DeviceInfo const& a, DeviceInfo const& b) noexcept {
     return a.id == b.id && a.name == b.name && a.percent == b.percent &&
            a.fidelity == b.fidelity && a.source == b.source && a.charge == b.charge;
 }
 
 // lastUpdate moves on every poll and would make every poll look like a change, so the
 // comparison covers only what the UI actually renders.
-bool sameList(std::vector<ControllerInfo> const& a, std::vector<ControllerInfo> const& b) noexcept {
+bool sameList(std::vector<DeviceInfo> const& a, std::vector<DeviceInfo> const& b) noexcept {
     return std::equal(a.begin(), a.end(), b.begin(), b.end(), sameReading);
 }
 
@@ -59,17 +60,17 @@ struct ControllerMonitor::Impl {
     bool includeNonXbox = false;
 
     std::mutex snapshotMutex;
-    std::vector<ControllerInfo> latest;
+    std::vector<DeviceInfo> latest;
 
     void run();
-    void publish(std::vector<ControllerInfo> list);
+    void publish(std::vector<DeviceInfo> list);
 
     void signal() {
         wake.notify_all();
     }
 };
 
-void ControllerMonitor::Impl::publish(std::vector<ControllerInfo> list) {
+void ControllerMonitor::Impl::publish(std::vector<DeviceInfo> list) {
     bool changed = false;
     {
         std::scoped_lock lock{snapshotMutex};
@@ -129,27 +130,35 @@ void ControllerMonitor::Impl::run() {
                 }
             }
 
-            std::vector<ControllerInfo> list;
+            std::vector<DeviceInfo> list;
             if (winrtUp) {
                 list = winrtProvider.poll();
             }
             // The two sources cannot be correlated -- an XInput slot carries no device
-            // identity -- so they are never merged; XInput only speaks when WinRT is silent.
+            // identity -- so they are never joined; XInput only speaks when WinRT is silent.
             if (list.empty() && std::chrono::steady_clock::now() - startedAt >= kWinRtGrace) {
                 list = xinputProvider.poll();
             }
+            // What that gate does not prevent is one source describing a device twice. Four
+            // things downstream -- firstSeen below, the event detector's per-device state, the
+            // history log and the card lookup on the devices page -- key on the id and treat it
+            // as an identity without ever checking that it is one. This is where that becomes
+            // true, and it is the seam the providers still to come report into.
+            list = mergeReadings(std::move(list));
+            // The setting is about pads specifically: a headset or a mouse is not a
+            // third-party gamepad and must not disappear with them.
             if (!includeAll) {
-                std::erase_if(list, [](ControllerInfo const& info) {
-                    return !info.isXboxController;
+                std::erase_if(list, [](DeviceInfo const& info) {
+                    return info.kind == DeviceKind::Gamepad && !info.isXboxController;
                 });
             }
 
             auto const now = std::chrono::system_clock::now();
-            for (ControllerInfo& info : list) {
+            for (DeviceInfo& info : list) {
                 info.firstSeen = firstSeen.try_emplace(info.id, now).first->second;
             }
             std::erase_if(firstSeen, [&list](auto const& entry) {
-                return std::none_of(list.begin(), list.end(), [&entry](ControllerInfo const& info) {
+                return std::none_of(list.begin(), list.end(), [&entry](DeviceInfo const& info) {
                     return info.id == entry.first;
                 });
             });
@@ -257,7 +266,7 @@ void ControllerMonitor::refreshNow() {
     m_impl->signal();
 }
 
-std::vector<ControllerInfo> ControllerMonitor::snapshot() const {
+std::vector<DeviceInfo> ControllerMonitor::snapshot() const {
     std::scoped_lock lock{m_impl->snapshotMutex};
     return m_impl->latest;
 }

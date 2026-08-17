@@ -26,7 +26,7 @@ namespace {
 
 using peek::BatteryHistory;
 using peek::ChargeState;
-using peek::ControllerInfo;
+using peek::DeviceInfo;
 using peek::HistorySample;
 using peek::PowerSource;
 using peek::test::makeController;
@@ -347,7 +347,7 @@ TEST_CASE("batteryHistory: the duplicate check compares against the newest readi
     BatteryHistory history{file};
     history.setRetention(kAllHistory);
 
-    ControllerInfo controller = makeController(L"pad-1", 80);
+    DeviceInfo controller = makeController(L"pad-1", 80);
     controller.lastUpdate = anchor + hours{3};
     history.record(controller);
 
@@ -370,7 +370,7 @@ TEST_CASE("batteryHistory: a reading stamped before one already held keeps the o
 
     // The clock can move backwards -- an NTP correction, or the user setting it -- and the
     // stamp comes from whenever the monitor last saw the pad, not from this moment.
-    ControllerInfo controller = makeController(L"pad-1", 85);
+    DeviceInfo controller = makeController(L"pad-1", 85);
     controller.lastUpdate = anchor + hours{1};
     history.record(controller);
 
@@ -394,7 +394,7 @@ TEST_CASE("batteryHistory: a reading is only appended when the level or the char
     BatteryHistory history{file};
     history.setRetention(kAllHistory);
 
-    ControllerInfo controller = makeController(L"pad-1", 78);
+    DeviceInfo controller = makeController(L"pad-1", 78);
     controller.lastUpdate = anchor;
     history.record(controller);
 
@@ -423,7 +423,7 @@ TEST_CASE("batteryHistory: the same level on a different charge state is a new s
     BatteryHistory history{file};
     history.setRetention(kAllHistory);
 
-    ControllerInfo controller = makeController(L"pad-1", 78, ChargeState::Discharging);
+    DeviceInfo controller = makeController(L"pad-1", 78, ChargeState::Discharging);
     controller.lastUpdate = anchor;
     history.record(controller);
 
@@ -458,11 +458,11 @@ TEST_CASE("batteryHistory: each controller keeps its own last reading") {
     BatteryHistory history{file};
     history.setRetention(kAllHistory);
 
-    ControllerInfo first = makeController(L"pad-1", 78);
+    DeviceInfo first = makeController(L"pad-1", 78);
     first.lastUpdate = anchor;
     history.record(first);
 
-    ControllerInfo second = makeController(L"pad-2", 78);
+    DeviceInfo second = makeController(L"pad-2", 78);
     second.lastUpdate = anchor + minutes{1};
     history.record(second);
 
@@ -481,7 +481,7 @@ TEST_CASE("batteryHistory: reopening the log does not re-append the last reading
     std::filesystem::path const file = dir.file(L"history.jsonl");
     Clock::time_point const anchor = testAnchor();
 
-    ControllerInfo controller = makeController(L"pad-1", 78);
+    DeviceInfo controller = makeController(L"pad-1", 78);
     controller.lastUpdate = anchor;
 
     {
@@ -515,7 +515,7 @@ TEST_CASE("batteryHistory: a pad with no battery is never recorded") {
     }
 
     SUBCASE("a pad running off the cable, which has no battery to log") {
-        ControllerInfo controller = makeController(L"pad-1", 80);
+        DeviceInfo controller = makeController(L"pad-1", 80);
         controller.source = PowerSource::Wired;
         history.record(controller);
         CHECK_FALSE(std::filesystem::exists(file));
@@ -532,7 +532,7 @@ TEST_CASE("batteryHistory: a pad with no battery is never recorded") {
         // The load-bearing case: a wireless pad with a pack the provider could not identify is
         // reported as Unknown rather than as Wired, and hasBattery tests "not wired" rather
         // than "on battery" exactly so those readings keep being recorded.
-        ControllerInfo controller = makeController(L"pad-1", 80);
+        DeviceInfo controller = makeController(L"pad-1", 80);
         controller.source = PowerSource::Unknown;
         history.record(controller);
         CHECK(std::filesystem::exists(file));
@@ -548,7 +548,7 @@ TEST_CASE("batteryHistory: a level above 100 is stored as 100") {
     BatteryHistory history{file};
     history.setRetention(kAllHistory);
 
-    ControllerInfo controller = makeController(L"pad-1", 150);
+    DeviceInfo controller = makeController(L"pad-1", 150);
     controller.lastUpdate = anchor;
     history.record(controller);
 
@@ -568,7 +568,7 @@ TEST_CASE("batteryHistory: the sample carries the reading's own timestamp, to th
     std::filesystem::path const file = dir.file(L"history.jsonl");
     Clock::time_point const anchor = testAnchor();
 
-    ControllerInfo controller = makeController(L"pad-1", 78);
+    DeviceInfo controller = makeController(L"pad-1", 78);
     controller.lastUpdate = anchor + hours{3};
 
     {
@@ -595,7 +595,7 @@ TEST_CASE("batteryHistory: a reading with no timestamp of its own is stamped now
     TempDir dir;
     std::filesystem::path const file = dir.file(L"history.jsonl");
 
-    ControllerInfo controller = makeController(L"pad-1", 78);
+    DeviceInfo controller = makeController(L"pad-1", 78);
     controller.lastUpdate = {};
 
     BatteryHistory history{file};
@@ -622,7 +622,7 @@ TEST_CASE("batteryHistory: a non-ascii controller id survives the round trip") {
     // machine whose ANSI code page is not the Cyrillic one.
     std::wstring const id = L"\u0413\u0435\u0439\u043C\u043F\u0430\u0434-\u03A9";
 
-    ControllerInfo controller = makeController(id, 78);
+    DeviceInfo controller = makeController(id, 78);
     controller.lastUpdate = testAnchor();
 
     {
@@ -646,7 +646,7 @@ TEST_CASE("batteryHistory: one recorded reading is one line of json") {
     TempDir dir;
     std::filesystem::path const file = dir.file(L"history.jsonl");
 
-    ControllerInfo controller = makeController(L"pad-1", 78, ChargeState::Discharging);
+    DeviceInfo controller = makeController(L"pad-1", 78, ChargeState::Discharging);
     controller.lastUpdate = Clock::time_point{std::chrono::seconds{1234567890}};
 
     BatteryHistory history{file};
@@ -668,7 +668,7 @@ TEST_CASE("batteryHistory: setEnabled(false) stops recording without touching th
     std::filesystem::path const file = dir.file(L"history.jsonl");
     Clock::time_point const anchor = testAnchor();
 
-    ControllerInfo controller = makeController(L"pad-1", 78);
+    DeviceInfo controller = makeController(L"pad-1", 78);
     controller.lastUpdate = anchor;
 
     BatteryHistory history{file};
@@ -718,11 +718,11 @@ TEST_CASE("batteryHistory: samplesFor returns only the requested controller") {
     BatteryHistory history{file};
     history.setRetention(kAllHistory);
 
-    ControllerInfo first = makeController(L"pad-1", 90);
+    DeviceInfo first = makeController(L"pad-1", 90);
     first.lastUpdate = anchor;
     history.record(first);
 
-    ControllerInfo second = makeController(L"pad-2", 50);
+    DeviceInfo second = makeController(L"pad-2", 50);
     second.lastUpdate = anchor + minutes{30};
     history.record(second);
 
@@ -748,7 +748,7 @@ TEST_CASE("batteryHistory: samplesFor drops samples older than the retention win
 
     BatteryHistory history{file};
 
-    ControllerInfo controller = makeController(L"pad-1", 90);
+    DeviceInfo controller = makeController(L"pad-1", 90);
     controller.lastUpdate = now - days{40};
     history.record(controller);
 
@@ -779,7 +779,7 @@ TEST_CASE("batteryHistory: retention is never shorter than a day") {
 
     BatteryHistory history{file};
 
-    ControllerInfo controller = makeController(L"pad-1", 90);
+    DeviceInfo controller = makeController(L"pad-1", 90);
     controller.lastUpdate = now - days{2};
     history.record(controller);
 
@@ -835,7 +835,7 @@ TEST_CASE("batteryHistory: drainPercentPerHour is the slope of the current disch
     BatteryHistory history{file};
     history.setRetention(kAllHistory);
 
-    ControllerInfo controller = makeController(L"pad-1", 100);
+    DeviceInfo controller = makeController(L"pad-1", 100);
     controller.lastUpdate = anchor;
     history.record(controller);
 
@@ -1049,7 +1049,7 @@ TEST_CASE("batteryHistory: estimatedRemaining is nothing for a pad that is not d
     BatteryHistory history{file};
     history.setRetention(kAllHistory);
 
-    ControllerInfo controller = makeController(L"pad-1", 50);
+    DeviceInfo controller = makeController(L"pad-1", 50);
 
     SUBCASE("on the cable") { controller.charge = ChargeState::Charging; }
     SUBCASE("charged") { controller.charge = ChargeState::Full; }
@@ -1141,7 +1141,7 @@ TEST_CASE("batteryHistory: prune drops old samples and rewrites the file") {
 
     BatteryHistory history{file};
 
-    ControllerInfo controller = makeController(L"pad-1", 90);
+    DeviceInfo controller = makeController(L"pad-1", 90);
     controller.lastUpdate = recent - days{40};
     history.record(controller);
 

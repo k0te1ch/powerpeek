@@ -22,7 +22,7 @@ protected:
     void build(StackPanel& column) override;
 
 private:
-    std::optional<std::chrono::minutes> remainingFor(ControllerInfo const& controller) const;
+    std::optional<std::chrono::minutes> remainingFor(DeviceInfo const& controller) const;
 
     std::vector<ControllerCard*> m_cards;
 };

@@ -3,7 +3,7 @@
 #include <array>
 #include <vector>
 
-#include "battery/ControllerInfo.h"
+#include "battery/DeviceInfo.h"
 #include "core/Win.h"
 
 #include <Xinput.h>
@@ -30,7 +30,7 @@ public:
     // device arrival, since an empty slot is otherwise only retried every few seconds.
     void invalidatePresence() noexcept;
 
-    std::vector<ControllerInfo> poll() noexcept;
+    std::vector<DeviceInfo> poll() noexcept;
 
 private:
     using GetStateFn = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);

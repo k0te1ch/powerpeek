@@ -252,7 +252,7 @@ void BatteryHistory::setRetention(std::chrono::days retention) {
     m_impl->retention = std::max(retention, std::chrono::days{1});
 }
 
-void BatteryHistory::record(ControllerInfo const& controller) {
+void BatteryHistory::record(DeviceInfo const& controller) {
     std::scoped_lock lock{m_impl->mutex};
     if (!m_impl->enabled || controller.id.empty() || !controller.hasBattery()) {
         return;
@@ -296,7 +296,7 @@ std::optional<double> BatteryHistory::drainPercentPerHour(std::wstring const& co
 }
 
 std::optional<std::chrono::minutes> BatteryHistory::estimatedRemaining(
-    ControllerInfo const& controller) const {
+    DeviceInfo const& controller) const {
     if (!controller.hasBattery() || controller.charge != ChargeState::Discharging) {
         return std::nullopt;
     }

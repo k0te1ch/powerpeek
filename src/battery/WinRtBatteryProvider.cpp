@@ -83,7 +83,7 @@ std::optional<int> percentOf(BatteryReport const& report) {
     return static_cast<int>(std::clamp<std::int64_t>(ratio, 0, 100));
 }
 
-void applyReport(BatteryReport const& report, bool wireless, ControllerInfo& info) {
+void applyReport(BatteryReport const& report, bool wireless, DeviceInfo& info) {
     switch (report.Status()) {
         case BatteryStatus::NotPresent:
             // A cabled pad with no battery pack. A *wireless* link reporting NotPresent is
@@ -208,7 +208,7 @@ void WinRtBatteryProvider::stop() noexcept {
     m_impl->started = false;
 }
 
-std::vector<ControllerInfo> WinRtBatteryProvider::poll() {
+std::vector<DeviceInfo> WinRtBatteryProvider::poll() {
     std::vector<RawGameController> controllers;
     {
         std::scoped_lock lock{m_impl->mutex};
@@ -216,13 +216,16 @@ std::vector<ControllerInfo> WinRtBatteryProvider::poll() {
     }
 
     auto const now = std::chrono::system_clock::now();
-    std::vector<ControllerInfo> result;
+    std::vector<DeviceInfo> result;
     result.reserve(controllers.size());
 
     for (std::size_t i = 0; i < controllers.size(); ++i) {
         RawGameController const& controller = controllers[i];
 
-        ControllerInfo info;
+        DeviceInfo info;
+        // Windows.Gaming.Input enumerates pads, wheels, flight sticks and arcade sticks --
+        // things you play with, and nothing else.
+        info.kind = DeviceKind::Gamepad;
         info.fidelity = Fidelity::Exact;
         info.lastUpdate = now;
 

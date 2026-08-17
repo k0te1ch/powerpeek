@@ -36,15 +36,15 @@ enum class CaptionCommand { Minimise, MaximiseOrRestore, Close };
 // palette's critical colour is a light pink in dark theme and would read as a highlight.
 constexpr D2D1_COLOR_F kCloseHover{0.769f, 0.169f, 0.110f, 1.0f};
 
-bool sameDevices(std::vector<ControllerInfo> const& a, std::vector<ControllerInfo> const& b) {
+bool sameDevices(std::vector<DeviceInfo> const& a, std::vector<DeviceInfo> const& b) {
     return std::equal(a.begin(), a.end(), b.begin(), b.end(),
-                      [](ControllerInfo const& x, ControllerInfo const& y) { return x.id == y.id; });
+                      [](DeviceInfo const& x, DeviceInfo const& y) { return x.id == y.id; });
 }
 
 // A reading that moved is also a sample the history may have just recorded.
-bool sameReadings(std::vector<ControllerInfo> const& a, std::vector<ControllerInfo> const& b) {
+bool sameReadings(std::vector<DeviceInfo> const& a, std::vector<DeviceInfo> const& b) {
     return std::equal(a.begin(), a.end(), b.begin(), b.end(),
-                      [](ControllerInfo const& x, ControllerInfo const& y) {
+                      [](DeviceInfo const& x, DeviceInfo const& y) {
                           return x.percent == y.percent && x.charge == y.charge;
                       });
 }
@@ -204,7 +204,7 @@ struct MainWindow::Impl {
     WidgetHost host;
     WindowShadow shadow;
     Dependencies deps;
-    std::vector<ControllerInfo> controllers;
+    std::vector<DeviceInfo> controllers;
     std::array<Page*, kPageCount> pages{};
     Shell* shell = nullptr;
     int selected = 0;
@@ -315,7 +315,7 @@ void MainWindow::hide() {
     }
 }
 
-void MainWindow::setControllers(std::vector<ControllerInfo> controllers) {
+void MainWindow::setControllers(std::vector<DeviceInfo> controllers) {
     bool const shapeHeld = sameDevices(m_impl->controllers, controllers);
     bool const levelsHeld = shapeHeld && sameReadings(m_impl->controllers, controllers);
     m_impl->controllers = std::move(controllers);
