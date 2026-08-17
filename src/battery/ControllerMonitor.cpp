@@ -5,9 +5,11 @@
 #include <iterator>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 #include "battery/DeviceMerge.h"
+#include "battery/PnpBatteryProvider.h"
 #include "battery/WinRtBatteryProvider.h"
 #include "battery/XInputBatteryProvider.h"
 #include "core/Logger.h"
@@ -31,6 +33,12 @@ constexpr std::chrono::seconds kWinRtGrace = 5s;
 // Nothing is connected: the WGI events do the waking, and this only paces the XInput
 // fallback probe, whose own per-slot cache keeps it to a handful of calls.
 constexpr std::chrono::seconds kIdleInterval = 30s;
+
+// The device tree costs a couple of hundred milliseconds to sweep and holds a value that only
+// moves when the device itself says so -- on connect, and then on a change worth reporting.
+// Sweeping it at the pad interval, which the user may set as low as five seconds, would spend
+// the cost forty times over for the same number. The last sweep is reused in between.
+constexpr std::chrono::seconds kDeviceTreeInterval = 30s;
 
 bool sameReading(DeviceInfo const& a, DeviceInfo const& b) noexcept {
     return a.id == b.id && a.name == b.name && a.percent == b.percent &&
@@ -113,6 +121,9 @@ void ControllerMonitor::Impl::run() {
         bool const winrtUp = winrtProvider.start();
 
         XInputBatteryProvider xinputProvider;
+        PnpBatteryProvider pnpProvider;
+        std::vector<DeviceInfo> pnpDevices;
+        std::optional<std::chrono::steady_clock::time_point> pnpSweptAt;
         std::map<std::wstring, std::chrono::system_clock::time_point> firstSeen;
         auto const startedAt = std::chrono::steady_clock::now();
         std::size_t rampStep = 0;
@@ -120,12 +131,16 @@ void ControllerMonitor::Impl::run() {
         for (;;) {
             std::chrono::seconds pollInterval{};
             bool includeAll = false;
+            // A device arriving is the one moment the tree is worth re-reading early: it is
+            // when a headset that was silent a second ago starts carrying a level.
+            bool devicesArrived = false;
             {
                 std::scoped_lock lock{mutex};
                 pollInterval = interval;
                 includeAll = includeNonXbox;
                 if (devicesChanged) {
                     devicesChanged = false;
+                    devicesArrived = true;
                     rampStep = 0;
                 }
             }
@@ -134,10 +149,35 @@ void ControllerMonitor::Impl::run() {
             if (winrtUp) {
                 list = winrtProvider.poll();
             }
-            // The two sources cannot be correlated -- an XInput slot carries no device
+            // Devices the device tree knows the battery of -- Bluetooth headsets, BLE mice and
+            // keyboards. They arrive after the pads and before the XInput fallback, and that
+            // order is the source priority: readings that rank equal keep the earlier source.
+            auto const sweptAgo = std::chrono::steady_clock::now();
+            if (!pnpSweptAt || sweptAgo - *pnpSweptAt >= kDeviceTreeInterval || devicesArrived) {
+                pnpDevices = pnpProvider.poll();
+                pnpSweptAt = sweptAgo;
+            }
+            for (DeviceInfo const& device : pnpDevices) {
+                // A pad is somebody else's job. An Xbox controller on a Bluetooth link can
+                // answer on the GATT battery service as well, and the two paths key it
+                // differently -- a container id here, a NonRoamableId there -- so nothing
+                // downstream could tell it is one pad. Windows.Gaming.Input enumerates every
+                // pad the system has, and its reading is the better one anyway.
+                if (winrtUp && device.kind == DeviceKind::Gamepad) {
+                    continue;
+                }
+                list.push_back(device);
+            }
+            // The pad sources cannot be correlated -- an XInput slot carries no device
             // identity -- so they are never joined; XInput only speaks when WinRT is silent.
-            if (list.empty() && std::chrono::steady_clock::now() - startedAt >= kWinRtGrace) {
-                list = xinputProvider.poll();
+            // The device tree is checked too, so that a connected headset does not keep the
+            // fallback from running for a pad WinRT could not see.
+            bool const noPads = std::none_of(list.begin(), list.end(), [](DeviceInfo const& info) {
+                return info.kind == DeviceKind::Gamepad;
+            });
+            if (noPads && std::chrono::steady_clock::now() - startedAt >= kWinRtGrace) {
+                std::vector<DeviceInfo> fallback = xinputProvider.poll();
+                list.insert(list.end(), fallback.begin(), fallback.end());
             }
             // What that gate does not prevent is one source describing a device twice. Four
             // things downstream -- firstSeen below, the event detector's per-device state, the
