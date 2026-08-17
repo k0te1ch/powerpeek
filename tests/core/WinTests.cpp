@@ -14,6 +14,7 @@
 
 #include "core/Win.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -57,10 +58,56 @@ bool hasDescribedShape(std::wstring const& described) {
            described.back() == L')';
 }
 
-// Exactly the set the strip loop in describeHresult pops, kept in one place so a test can
-// say "anything but these" without spelling the list out again.
-bool isStrippedTrailer(wchar_t c) {
-    return c == L'\r' || c == L'\n' || c == L' ' || c == L'.';
+// The two clauses of the trailing trim in describeHresult, named once so a test can assert
+// against the contract rather than restate it. Trailing whitespace never survives, in any
+// amount or flavour. A full stop survives only as part of a longer run: an ellipsis is
+// punctuation the message itself owns, whereas a stop standing alone is only the system
+// closing its own sentence, and that sentence ends at the bracket instead.
+bool endsWithWhitespace(std::wstring_view text) {
+    if (text.empty()) {
+        return false;
+    }
+    wchar_t const last = text.back();
+    return last == L'\r' || last == L'\n' || last == L'\t' || last == L' ';
+}
+
+bool endsWithLoneFullStop(std::wstring_view text) {
+    if (text.empty() || text.back() != L'.') {
+        return false;
+    }
+    return text.size() == 1u || text[text.size() - 2u] != L'.';
+}
+
+// Whatever FormatMessage supplied, as it survives into the result: everything between the
+// opening bracket at index 11 and the closing one at the end. Empty for a bare code, which
+// is the right answer for a machine holding no message for the id.
+std::wstring_view bracketedMessage(std::wstring const& described) {
+    if (described.size() < 13u) {
+        return {};
+    }
+    return std::wstring_view(described).substr(12u, described.size() - 13u);
+}
+
+// The message the machine itself holds for an id, asked for exactly the way describeHresult
+// asks for it. A test may not know what this says, but it can hold the described form up
+// against it, which is the only way to establish that the trim took nothing it should not
+// have. The flags are repeated rather than shared because they are part of what is being
+// checked: FORMAT_MESSAGE_IGNORE_INSERTS in particular changes what comes back.
+std::wstring systemMessage(HRESULT hr) {
+    wchar_t* buffer = nullptr;
+    DWORD const length = FormatMessageW(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr, static_cast<DWORD>(hr), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        reinterpret_cast<wchar_t*>(&buffer), 0, nullptr);
+
+    std::wstring text;
+    if (length != 0 && buffer != nullptr) {
+        text.assign(buffer, length);
+    }
+    if (buffer != nullptr) {
+        LocalFree(buffer);
+    }
+    return text;
 }
 
 }  // namespace
@@ -363,11 +410,12 @@ TEST_CASE("win: describeHresult formats s_ok the same way as a failure code") {
     CHECK(hasDescribedShape(result));
 }
 
-TEST_CASE("win: describeHresult never leaves trailing punctuation from the system message") {
+TEST_CASE("win: describeHresult leaves no trailing whitespace or lone stop before the bracket") {
     // Windows system messages end with ".\r\n". Left in, every logged error would carry a
     // carriage return and a newline in the middle of its own line, and the log would stop
-    // being one record per line -- the single property its whole format rests on. This holds
-    // on a localised install too, because the strip runs on whatever text came back.
+    // being one record per line -- the single property its whole format rests on. The stop
+    // goes with them because the sentence it closes now ends at the bracket. This holds on a
+    // localised install too, because the strip runs on whatever text came back.
     std::array const codes{S_OK,
                            S_FALSE,
                            E_FAIL,
@@ -383,9 +431,72 @@ TEST_CASE("win: describeHresult never leaves trailing punctuation from the syste
         auto const result = describeHresult(code);
         if (result.size() > 10u) {
             CHECK(result.back() == L')');
-            CHECK_FALSE(isStrippedTrailer(result[result.size() - 2]));
+            auto const message = bracketedMessage(result);
+            CHECK_FALSE(endsWithWhitespace(message));
+            CHECK_FALSE(endsWithLoneFullStop(message));
         }
     }
+}
+
+TEST_CASE("win: describeHresult takes the sentence terminator and nothing else") {
+    // Everything else here is a shape check, and a trim that ate the last word of the message
+    // satisfies the lot: "0x80070005 (Access is)" ends in neither whitespace nor a lone stop
+    // and carries a perfectly good frame. This case holds the described form against the text
+    // the machine itself supplied, so the expectation is whatever the installed language pack
+    // produced and no Windows edition is assumed. What it pins is the size of the bite: a run
+    // of trailing whitespace, then at most one full stop, then whatever whitespace that stop
+    // was hiding.
+    //
+    // The whole win32 facility is walked rather than a list of well-known codes, and that is
+    // the point of the case rather than thoroughness for its own sake. The trim is about
+    // punctuation the message table happens to carry, and the ids anyone would think to write
+    // down all end their message the same dull way: one full stop, one line break. The rows
+    // that make the rules bite are obscure ones -- on this machine seven ids in this range end
+    // their sentence with a space in front of the stop, and taking the stop away exposed it
+    // against the closing bracket. A hand-picked list contained none of them and passed while
+    // that was broken.
+    //
+    // The clause about a longer run of stops is the one half this cannot promise to exercise:
+    // whether any row here ends in an ellipsis is up to the language pack, and there is no
+    // seam to feed describeHresult text of our own through. It is checked wherever the table
+    // does carry one, and the count below is what stops the case from passing on nothing.
+    int examined = 0;
+    for (std::uint32_t code = 0; code < 0x3000u; ++code) {
+        HRESULT const hr = HRESULT_FROM_WIN32(code);
+        std::wstring const raw = systemMessage(hr);
+        if (raw.empty()) {
+            // No message resource for this id on this install; the bare-code branch that
+            // produces is covered elsewhere.
+            continue;
+        }
+        ++examined;
+        CAPTURE(code);
+
+        std::wstring const described = describeHresult(hr);
+        auto const message = bracketedMessage(described);
+        // Characters only ever come off the back, so what is left has to be a prefix of what
+        // came in. Anything else means the text was rebuilt rather than trimmed.
+        REQUIRE(raw.starts_with(message));
+
+        auto const removed = std::wstring_view(raw).substr(message.size());
+        CHECK(removed.find_first_not_of(L".\r\n\t ") == std::wstring_view::npos);
+        // At most one stop, however much whitespace surrounds it. A message ending in an
+        // ellipsis keeps at least two of its three.
+        CHECK(std::ranges::count(removed, L'.') <= 1);
+        // And nothing of the message's own is left touching the bracket.
+        CHECK_FALSE(endsWithWhitespace(message));
+        CHECK_FALSE(endsWithLoneFullStop(message));
+
+        // Bounded from the other side too: a strip that ran off the end would leave nothing
+        // for the brackets, and the result would quietly become the bare code.
+        if (raw.find_first_not_of(L".\r\n\t ") != std::wstring::npos) {
+            CHECK_FALSE(message.empty());
+        }
+    }
+
+    // A machine with no message table at all would otherwise pass this case having asserted
+    // nothing. Every Windows carrying the resources for this facility holds hundreds.
+    REQUIRE(examined > 100);
 }
 
 TEST_CASE("win: describeHresult produces the same shape for every hresult") {
