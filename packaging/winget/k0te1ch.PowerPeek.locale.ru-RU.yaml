@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.locale.1.6.0.schema.json
+PackageIdentifier: k0te1ch.PowerPeek
+PackageVersion: __VERSION__
+PackageLocale: ru-RU
+Publisher: k0te1ch
+PublisherUrl: https://github.com/k0te1ch
+PublisherSupportUrl: https://boosty.to/k0te1ch
+PackageName: PowerPeek
+PackageUrl: https://github.com/k0te1ch/powerpeek
+License: GPL-3.0-or-later
+LicenseUrl: https://github.com/k0te1ch/powerpeek/blob/main/LICENSE
+Copyright: Copyright (c) k0te1ch
+ShortDescription: Заряд геймпада Xbox в области уведомлений, с теми предупреждениями, которые нужны именно тебе.
+Description: >-
+  PowerPeek показывает заряд геймпада Xbox в области уведомлений Windows и
+  предупреждает до того, как геймпад выключится, а не после. Живой значок в трее
+  (батарея, кольцо или проценты), настраиваемые звуки, уведомления в стиле Fluent и
+  уведомления Центра уведомлений Windows, график истории заряда. Без телеметрии, без
+  аккаунтов, без единой сетевой строчки кода.
+ReleaseNotesUrl: https://github.com/k0te1ch/powerpeek/releases/tag/v__VERSION__
+ManifestType: locale
+ManifestVersion: 1.6.0

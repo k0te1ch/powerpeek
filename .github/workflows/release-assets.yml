@@ -93,3 +93,66 @@ jobs:
         run: |
           $assets = Get-ChildItem dist -File | ForEach-Object FullName
           gh release upload $env:TAG $assets --clobber
+
+  # Renders the winget manifest templates in packaging\winget for this release and
+  # attaches the result as a release asset. It does not touch microsoft/winget-pkgs --
+  # see packaging\winget\README.md for why, and for the optional step that would submit
+  # there once the owner adds a token for it.
+  winget-manifest:
+    name: Render winget manifest
+    needs: attach
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
+
+      - name: Check the tag against version.txt
+        shell: pwsh
+        run: |
+          $version = (Get-Content version.txt -Raw).Trim()
+          if ($env:TAG -ne "v$version") {
+              throw "The release is tagged $env:TAG, but version.txt says $version."
+          }
+
+      # The installer asset the manifest points at was just attached by the `attach` job
+      # above; downloading it here (rather than trusting the .sha256 sidecar produced in
+      # that job's own runner) is what proves the URL below actually serves that exact
+      # file.
+      - name: Download the installer and its checksum
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content version.txt -Raw).Trim()
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          $installer = "PowerPeek-Setup-$version.exe"
+          gh release download $env:TAG --pattern $installer --dir dist --clobber
+          $hash = (Get-FileHash -LiteralPath (Join-Path 'dist' $installer) -Algorithm SHA256).Hash
+          "INSTALLER_NAME=$installer" >> $env:GITHUB_ENV
+          "INSTALLER_SHA256=$hash" >> $env:GITHUB_ENV
+          "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Render the manifest
+        shell: pwsh
+        run: |
+          $url = "https://github.com/${{ github.repository }}/releases/download/$env:TAG/$env:INSTALLER_NAME"
+          .\tools\render-winget-manifest.ps1 -Version $env:PACKAGE_VERSION -InstallerUrl $url -InstallerSha256 $env:INSTALLER_SHA256
+
+      - name: Zip the manifest
+        shell: pwsh
+        run: |
+          $zip = "dist\winget-manifests-$env:PACKAGE_VERSION.zip"
+          if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
+          Compress-Archive -Path 'dist\winget\*' -DestinationPath $zip -CompressionLevel Optimal
+
+      - name: Attach the manifest to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload $env:TAG "dist\winget-manifests-$env:PACKAGE_VERSION.zip" --clobber

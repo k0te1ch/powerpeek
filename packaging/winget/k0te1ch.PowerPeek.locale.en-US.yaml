@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: k0te1ch.PowerPeek
+PackageVersion: __VERSION__
+PackageLocale: en-US
+Publisher: k0te1ch
+PublisherUrl: https://github.com/k0te1ch
+PublisherSupportUrl: https://boosty.to/k0te1ch
+PackageName: PowerPeek
+PackageUrl: https://github.com/k0te1ch/powerpeek
+License: GPL-3.0-or-later
+LicenseUrl: https://github.com/k0te1ch/powerpeek/blob/main/LICENSE
+Copyright: Copyright (c) k0te1ch
+ShortDescription: Xbox controller battery level in the notification area, with the warnings you actually want.
+Description: >-
+  PowerPeek puts your Xbox controller's battery level in the Windows notification area
+  and warns you before it dies instead of after. A live tray icon (battery, ring gauge
+  or percentage), configurable sounds, Fluent-styled and Windows Action Center
+  notifications, and a battery history chart. No telemetry, no accounts, no network
+  code.
+Moniker: powerpeek
+Tags:
+  - xbox
+  - controller
+  - gamepad
+  - battery
+  - tray
+  - notification
+ReleaseNotesUrl: https://github.com/k0te1ch/powerpeek/releases/tag/v__VERSION__
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
