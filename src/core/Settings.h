@@ -168,6 +168,11 @@ struct Settings {
     // changes until it is chosen.
     float windowOpacity = 1.0f;
 
+    // Holds notifications back while a full-screen game or a presentation is running, or
+    // while Focus Assist is on. A critical battery still gets through; notify::decideDelivery
+    // has the rules.
+    bool quietWhenBusy = true;
+
     // Scales every notification sound; the per-event volume multiplies into this.
     float masterVolume = 0.8f;
 

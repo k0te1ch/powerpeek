@@ -131,6 +131,7 @@ json::Value toJson(Settings const& settings) {
     root.set("backdrop", enumName(kBackdropNames, settings.backdrop));
     root.set("windowOpacity", settings.windowOpacity);
 
+    root.set("quietWhenBusy", settings.quietWhenBusy);
     root.set("masterVolume", settings.masterVolume);
 
     root.set("historyEnabled", settings.historyEnabled);
@@ -314,6 +315,7 @@ Settings Settings::load(std::filesystem::path const& file) {
         std::clamp(root["windowOpacity"].asFloat(settings.windowOpacity),
                    static_cast<float>(kMinimumWindowOpacity), 1.0f);
 
+    settings.quietWhenBusy = root["quietWhenBusy"].asBool(settings.quietWhenBusy);
     settings.masterVolume =
         std::clamp(root["masterVolume"].asFloat(settings.masterVolume), 0.0f, 1.0f);
 

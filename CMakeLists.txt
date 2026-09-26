@@ -139,6 +139,7 @@ set(PP_CORE_SOURCES
     battery/DeviceMerge.cpp
     battery/EventDetector.cpp
     audio/WavReader.cpp
+    notify/QuietPolicy.cpp
     notify/ToastLayout.cpp
     ui/Animation.cpp
     ui/Quantise.cpp)

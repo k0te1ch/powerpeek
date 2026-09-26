@@ -8,8 +8,10 @@
 #include "audio/AudioEngine.h"
 #include "core/Logger.h"
 #include "core/Strings.h"
+#include "notify/QuietPolicy.h"
 #include "notify/SystemToast.h"
 #include "notify/ToastWindow.h"
+#include "platform/Platform.h"
 #include "ui/Theme.h"
 
 // The resources directory is not on the include path -- only src is -- and the built-in
@@ -186,22 +188,25 @@ void NotificationCenter::Impl::playFor(NotificationEvent event) {
 void NotificationCenter::Impl::deliver(NotificationEvent event,
                                        DeviceInfo const& controller,
                                        bool ignoreEnabled) {
-    EventSettings const& config = settings.forEvent(event);
-    if (!config.enabled && !ignoreEnabled) {
+    // The test button asked for the event on purpose, so the user's state does not apply.
+    UserBusyState const state = ignoreEnabled ? UserBusyState::Available : platform::userBusyState();
+    Delivery const outputs = decideDelivery(event, settings.forEvent(event), settings.quietWhenBusy,
+                                            state, ignoreEnabled);
+    if (!outputs.any()) {
         return;
     }
 
-    if (config.playSound) {
+    if (outputs.playSound) {
         playFor(event);
     }
 
     bool flyoutShown = false;
-    if (config.showFlyout) {
+    if (outputs.showFlyout) {
         ToastStack::instance().show(makeContent(event, controller));
         flyoutShown = true;
     }
 
-    if (config.showSystemToast) {
+    if (outputs.showSystemToast) {
         bool const raised = systemToast::show(makeTitle(event, controller), makeBody(controller),
                                               toastTag(event, controller));
         if (!raised && !flyoutShown) {

@@ -294,6 +294,14 @@ void SettingsPage::addAppearance(StackPanel& column) {
             m_context.applySettings(std::move(next));
         }));
 
+    auto* quietCard = group->addCard(glyph::kSettings, std::wstring(text(Text::QuietWhenBusy)));
+    quietCard->setDescription(std::wstring(text(Text::QuietWhenBusyDesc)));
+    quietCard->setControl(std::make_unique<ToggleSwitch>(current.quietWhenBusy, [this](bool on) {
+        Settings next = SettingsStore::instance().get();
+        next.quietWhenBusy = on;
+        m_context.applySettings(std::move(next));
+    }));
+
     auto* toastCard =
         group->addCard(glyph::kSettings, std::wstring(text(Text::ToastPositionLabel)));
     toastCard->setDescription(std::wstring(text(Text::ToastPositionDesc)));
