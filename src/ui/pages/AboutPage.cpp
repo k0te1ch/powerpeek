@@ -1,8 +1,11 @@
 #include "ui/pages/AboutPage.h"
 
 #include <shellapi.h>
+#include <shlobj.h>
 
+#include <filesystem>
 #include <string>
+#include <system_error>
 #include <utility>
 
 #include "core/AppPaths.h"
@@ -26,6 +29,30 @@ void openWithShell(std::wstring const& target, HWND owner) {
     }
 }
 
+// Opens Explorer on the log's folder with the log itself selected, so the file to attach to a
+// bug report is the one already highlighted. Before the first line is written there is no
+// file to select, and the folder alone is the next best thing.
+void revealLog(HWND owner) {
+    std::filesystem::path const file = paths::logFile();
+    std::error_code code;
+    if (!std::filesystem::exists(file, code)) {
+        openWithShell(file.parent_path().wstring(), owner);
+        return;
+    }
+
+    PIDLIST_ABSOLUTE item = ILCreateFromPathW(file.c_str());
+    if (!item) {
+        openWithShell(file.parent_path().wstring(), owner);
+        return;
+    }
+    HRESULT const hr = SHOpenFolderAndSelectItems(item, 0, nullptr, 0);
+    ILFree(item);
+    if (FAILED(hr)) {
+        log::warning(L"Could not reveal {}: {}", file.wstring(), describeHresult(hr));
+        openWithShell(file.parent_path().wstring(), owner);
+    }
+}
+
 }  // namespace
 
 AboutPage::AboutPage(PageContext context) : Page(std::move(context)) {}
@@ -43,6 +70,9 @@ void AboutPage::build(StackPanel& column) {
     HWND const owner = m_context.owner;
     auto* folder = group->addCard(glyph::kFolder, std::wstring(text(Text::OpenDataFolder)));
     folder->setOnClick([owner] { openWithShell(paths::dataDir().wstring(), owner); });
+
+    auto* logs = group->addCard(glyph::kFolder, std::wstring(text(Text::OpenLogsFolder)));
+    logs->setOnClick([owner] { revealLog(owner); });
 
     auto* repository =
         group->addCard(glyph::kChevronRight, std::wstring(text(Text::OpenSourceRepository)));
