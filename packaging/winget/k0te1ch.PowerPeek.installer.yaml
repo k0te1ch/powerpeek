@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: k0te1ch.PowerPeek
+PackageVersion: __VERSION__
+MinimumOSVersion: 10.0.17763.0
+InstallerType: inno
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+Installers:
+  # Two installer nodes, not one -- the setup itself asks the question
+  # (PrivilegesRequiredOverridesAllowed=dialog in installer/PowerPeek.iss) whenever
+  # neither /CURRENTUSER nor /ALLUSERS is on the command line. Declaring both Scope
+  # values here, pointed at the same file, lets `winget install --scope machine|user`
+  # answer that question instead of leaving a silent install stuck on a dialog.
+  - Architecture: x64
+    Scope: user
+    InstallerUrl: __INSTALLER_URL__
+    InstallerSha256: __INSTALLER_SHA256__
+    InstallerSwitches:
+      Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER
+      SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER
+  - Architecture: x64
+    Scope: machine
+    InstallerUrl: __INSTALLER_URL__
+    InstallerSha256: __INSTALLER_SHA256__
+    InstallerSwitches:
+      Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /ALLUSERS
+      SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP- /ALLUSERS
+ManifestType: installer
+ManifestVersion: 1.6.0

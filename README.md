@@ -69,6 +69,15 @@ To have it start with Windows, turn on **Start with Windows** in Settings.
 To remove the portable copy: quit from the tray menu, delete the executable, and delete
 `%LOCALAPPDATA%\PowerPeek` if you want its settings gone too.
 
+### Install via winget (once published)
+
+PowerPeek is not yet on [winget-pkgs](https://github.com/microsoft/winget-pkgs); once it is,
+installing the setup this way will keep it up to date automatically:
+
+```
+winget install k0te1ch.PowerPeek
+```
+
 ## Requirements
 
 - Windows 10 version 1809 or newer, 64-bit. Windows 11 is fully supported and picks up its rounded
