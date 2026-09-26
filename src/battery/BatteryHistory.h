@@ -38,6 +38,9 @@ public:
     // Samples for one controller, oldest first, limited to the retention window.
     std::vector<HistorySample> samplesFor(std::wstring const& controllerId) const;
 
+    // Every controller's samples, oldest first, limited to the retention window.
+    std::vector<HistorySample> allSamples() const;
+
     // Mean drain in percent per hour over the most recent discharge run, or nothing when
     // there is not enough data (fewer than two samples, or the pad has been charging).
     std::optional<double> drainPercentPerHour(std::wstring const& controllerId) const;

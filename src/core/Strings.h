@@ -50,6 +50,9 @@ enum class Text {
     HistoryRange7d,
     HistoryRange30d,
     DrainRate,
+    HistoryExport,
+    HistoryExportDesc,
+    HistoryExportFilter,
 
     SoundsTitle,
     SoundsSubtitle,
@@ -139,6 +142,7 @@ enum class Text {
     AboutVersion,
     AboutDescription,
     OpenDataFolder,
+    OpenLogsFolder,
     OpenSourceRepository,
     AboutAuthor,
     SupportAuthor,

@@ -55,6 +55,11 @@ constexpr Entry kTable[] = {
     {Text::HistoryRange7d, L"7 days", L"7 дней"},
     {Text::HistoryRange30d, L"30 days", L"30 дней"},
     {Text::DrainRate, L"{}% per hour", L"{}% в час"},
+    {Text::HistoryExport, L"Export CSV", L"Экспорт в CSV"},
+    {Text::HistoryExportDesc,
+     L"Save every recorded reading of all devices as a spreadsheet",
+     L"Сохранить все записанные показания всех устройств в таблицу"},
+    {Text::HistoryExportFilter, L"CSV spreadsheet", L"Таблица CSV"},
 
     {Text::SoundsTitle, L"Sounds and notifications", L"Звуки и уведомления"},
     {Text::SoundsSubtitle, L"Choose what each event does.",
@@ -183,6 +188,7 @@ constexpr Entry kTable[] = {
      L"Заряд геймпадов в области уведомлений и предупреждения, которые ты сам настроишь. "
      L"Без телеметрии, без сети, без установки."},
     {Text::OpenDataFolder, L"Open data folder", L"Открыть папку данных"},
+    {Text::OpenLogsFolder, L"Open logs folder", L"Открыть папку логов"},
     {Text::OpenSourceRepository, L"Source code", L"Исходный код"},
     {Text::AboutAuthor, L"Made by k0te1ch", L"Автор — k0te1ch"},
     {Text::SupportAuthor, L"Support the author", L"Поддержать автора"},

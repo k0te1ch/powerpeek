@@ -15,6 +15,9 @@ protected:
     void build(StackPanel& column) override;
 
 private:
+    // Asks where to save, then writes every retained sample of every device there as CSV.
+    void exportCsv();
+
     int m_controller = 0;
     int m_range = 0;
 };

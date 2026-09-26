@@ -1,15 +1,22 @@
 #include "ui/pages/HistoryPage.h"
 
+#include <shobjidl.h>
+
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <format>
+#include <fstream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "battery/HistoryCsv.h"
+#include "core/Logger.h"
 #include "core/Strings.h"
 #include "ui/Drawing.h"
 #include "ui/pages/PageWidgets.h"
@@ -44,6 +51,61 @@ std::wstring formatMoment(std::chrono::system_clock::time_point when, bool withi
         return std::format(L"{:02}:{:02}", local.tm_hour, local.tm_min);
     }
     return std::format(L"{:02}.{:02}", local.tm_mday, local.tm_mon + 1);
+}
+
+// The zone's offset at that instant, daylight saving included: the local broken-down time
+// read back as if it were UTC, minus the instant itself.
+std::chrono::minutes utcOffsetAt(std::chrono::system_clock::time_point when) {
+    auto const stamp = std::chrono::system_clock::to_time_t(when);
+    std::tm local{};
+    if (localtime_s(&local, &stamp) != 0) {
+        return std::chrono::minutes{0};
+    }
+    auto const asUtc = _mkgmtime(&local);
+    if (asUtc == -1) {
+        return std::chrono::minutes{0};
+    }
+    return std::chrono::duration_cast<std::chrono::minutes>(std::chrono::seconds{asUtc - stamp});
+}
+
+// The path the user picked, or nothing when they cancelled or the dialog could not be shown.
+std::optional<std::filesystem::path> askSavePath(HWND owner) {
+    com_ptr<IFileSaveDialog> dialog;
+    HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                  IID_PPV_ARGS(dialog.put()));
+    if (FAILED(hr)) {
+        log::error(L"Could not create the save dialog: {}", describeHresult(hr));
+        return std::nullopt;
+    }
+
+    std::wstring const filterName(text(Text::HistoryExportFilter));
+    COMDLG_FILTERSPEC const filters[]{{filterName.c_str(), L"*.csv"}};
+    dialog->SetFileTypes(ARRAYSIZE(filters), filters);
+    dialog->SetDefaultExtension(L"csv");
+    dialog->SetFileName(L"PowerPeek history.csv");
+    dialog->SetOptions(FOS_OVERWRITEPROMPT | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM |
+                       FOS_NOCHANGEDIR);
+
+    hr = dialog->Show(owner);
+    if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+        return std::nullopt;
+    }
+    if (FAILED(hr)) {
+        log::warning(L"The save dialog failed: {}", describeHresult(hr));
+        return std::nullopt;
+    }
+
+    com_ptr<IShellItem> item;
+    if (FAILED(dialog->GetResult(item.put()))) {
+        return std::nullopt;
+    }
+    wchar_t* path = nullptr;
+    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) || !path) {
+        return std::nullopt;
+    }
+    std::filesystem::path result(path);
+    CoTaskMemFree(path);
+    return result;
 }
 
 }  // namespace
@@ -116,6 +178,15 @@ HistoryPage::HistoryPage(PageContext context) : Page(std::move(context)) {}
 void HistoryPage::build(StackPanel& column) {
     column.emplace<PageHeader>(std::wstring(text(Text::HistoryTitle)));
 
+    // Offered whenever there is a history at all, not only with a pad connected: the log
+    // outlives the connection, and a disconnected pad's readings are still worth exporting.
+    if (m_context.history) {
+        auto* exporter =
+            column.emplace<SettingsCard>(glyph::kSave, std::wstring(text(Text::HistoryExport)));
+        exporter->setDescription(std::wstring(text(Text::HistoryExportDesc)));
+        exporter->setOnClick([this] { exportCsv(); });
+    }
+
     auto const& controllers = *m_context.controllers;
     if (controllers.empty() || !m_context.history) {
         column.emplace<EmptyState>(glyph::kChart, std::wstring(text(Text::HistoryEmpty)),
@@ -177,6 +248,37 @@ void HistoryPage::build(StackPanel& column) {
     column.emplace<ChartCard>(std::move(points), formatMoment(oldest, oneDay),
                               formatMoment(middle, oneDay), formatMoment(now, oneDay),
                               m_context.history->drainPercentPerHour(selected.id));
+}
+
+void HistoryPage::exportCsv() {
+    auto const target = askSavePath(m_context.owner);
+    if (!target) {
+        return;
+    }
+
+    // Names are taken from the pads known right now; one not seen this session exports under
+    // its stored id, which is still unique and still readable.
+    std::map<std::wstring, std::wstring> names;
+    for (DeviceInfo const& controller : *m_context.controllers) {
+        names.emplace(controller.id, controller.name);
+    }
+
+    CsvExport options;
+    options.deviceName = [&names](std::wstring const& id) {
+        auto const found = names.find(id);
+        return found == names.end() || found->second.empty() ? id : found->second;
+    };
+    options.utcOffset = utcOffsetAt;
+
+    std::string const csv = historyToCsv(m_context.history->allSamples(), options);
+
+    std::ofstream stream{*target, std::ios::binary | std::ios::trunc};
+    stream.write(csv.data(), static_cast<std::streamsize>(csv.size()));
+    if (!stream) {
+        log::error(L"Could not write the history export to {}", target->wstring());
+        return;
+    }
+    log::info(L"Exported the battery history to {}", target->wstring());
 }
 
 }  // namespace peek::ui

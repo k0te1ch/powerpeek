@@ -1199,3 +1199,25 @@ TEST_CASE("batteryHistory: prune does not create a file that was never there") {
     CHECK_FALSE(std::filesystem::exists(file));
     CHECK_FALSE(std::filesystem::exists(temporary));
 }
+
+TEST_CASE("allSamples returns every controller's readings in time order") {
+    TempDir dir;
+    std::filesystem::path const file = dir.file(L"history.jsonl");
+    Clock::time_point const anchor = testAnchor();
+
+    writeLog(file, {logLine("pad-2", 60, "charging", anchor + hours{1}),
+                    logLine("pad-1", 90, "discharging", anchor),
+                    logLine("pad-1", 80, "discharging", anchor + hours{2})});
+
+    BatteryHistory history{file};
+    history.setRetention(kAllHistory);
+
+    // The export writes all devices into one file, so it has to see the pads interleaved by
+    // time rather than grouped by id.
+    std::vector<HistorySample> const samples = history.allSamples();
+    REQUIRE(samples.size() == 3u);
+    CHECK(samples[0].controllerId == L"pad-1");
+    CHECK(samples[1].controllerId == L"pad-2");
+    CHECK(samples[2].controllerId == L"pad-1");
+    CHECK(level(samples[2]) == 80);
+}
