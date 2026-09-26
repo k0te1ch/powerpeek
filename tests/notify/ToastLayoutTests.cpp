@@ -25,6 +25,9 @@
 #include "core/Settings.h"
 #include "notify/ToastLayout.h"
 
+#include <cstddef>
+#include <vector>
+
 namespace {
 
 using peek::ToastPosition;
@@ -403,5 +406,135 @@ TEST_CASE("placeToast: the anchored edges hold whatever size the card is") {
             placedCardOfSize(kWorkArea, window, marginPx, gapPx, 0, ToastPosition::BottomRight);
         CHECK(card.right == kWorkArea.right - gapPx);
         CHECK(card.bottom == kWorkArea.bottom - gapPx);
+    }
+}
+
+namespace {
+
+// Which side of the monitor the taskbar occupies. The work area handed to placeToast is the
+// monitor rectangle with that strip removed -- the one Win32 fact this matrix exists to react
+// to, since a taskbar on the left or right turns the "bottom" and "top" cases into rectangles
+// that do not start at x == 0.
+struct TaskbarEdge {
+    char const* name;
+    RECT (*shrink)(RECT monitor, int thicknessPx);
+};
+
+constexpr TaskbarEdge kTaskbarEdges[] = {
+    {"bottom",
+     [](RECT monitor, int thicknessPx) {
+         return RECT{monitor.left, monitor.top, monitor.right, monitor.bottom - thicknessPx};
+     }},
+    {"top",
+     [](RECT monitor, int thicknessPx) {
+         return RECT{monitor.left, monitor.top + thicknessPx, monitor.right, monitor.bottom};
+     }},
+    {"left",
+     [](RECT monitor, int thicknessPx) {
+         return RECT{monitor.left + thicknessPx, monitor.top, monitor.right, monitor.bottom};
+     }},
+    {"right",
+     [](RECT monitor, int thicknessPx) {
+         return RECT{monitor.left, monitor.top, monitor.right - thicknessPx, monitor.bottom};
+     }},
+};
+
+// What ToastWindow actually hands over at each of the three scales the settings page offers,
+// derived from the same 340 by 96 card kWindow wraps at 100%: the card, its shadow field and the
+// gap it keeps from the work area are all multiplied by the monitor's scale before they reach
+// this function, and the taskbar shrinks by the same factor.
+struct ScaledMetrics {
+    char const* name;
+    SIZE windowPx;
+    int marginPx;
+    int gapPx;
+    int taskbarPx;
+};
+
+constexpr ScaledMetrics kScales[] = {
+    {"100%", SIZE{388, 144}, 24, 12, 48},
+    {"150%", SIZE{582, 216}, 36, 18, 72},
+    {"200%", SIZE{776, 288}, 48, 24, 96},
+};
+
+constexpr RECT kMonitor{0, 0, 1920, 1080};
+
+// A stack of up to three cards for one position, one taskbar edge and one scale, each one
+// visible rectangle. `count` is 1 to 3, matching what ToastStack actually keeps on screen.
+std::vector<VisibleCard> placedStack(RECT workArea, ScaledMetrics const& metrics,
+                                     ToastPosition position, int count) {
+    int const cardHeight = metrics.windowPx.cy - 2 * metrics.marginPx;
+    std::vector<VisibleCard> cards;
+    for (int i = 0; i < count; ++i) {
+        int const offset = i * (cardHeight + metrics.gapPx);
+        cards.push_back(placedCardOfSize(workArea, metrics.windowPx, metrics.marginPx,
+                                         metrics.gapPx, offset, position));
+    }
+    return cards;
+}
+
+}  // namespace
+
+TEST_CASE("placeToast: a full stack stays on screen, clear of itself, for every position, "
+          "taskbar edge and scale") {
+    for (auto const& positionEntry : kAllPositions) {
+        for (auto const& edge : kTaskbarEdges) {
+            for (auto const& scale : kScales) {
+                RECT const workArea = edge.shrink(kMonitor, scale.taskbarPx);
+
+                for (int count = 1; count <= 3; ++count) {
+                    CAPTURE(positionEntry.name);
+                    CAPTURE(edge.name);
+                    CAPTURE(scale.name);
+                    CAPTURE(count);
+
+                    std::vector<VisibleCard> const cards =
+                        placedStack(workArea, scale, positionEntry.position, count);
+
+                    // Every card in the stack stays inside the work area on both axes, not
+                    // only the first one: a stack that fit for one card but drifted past the
+                    // far edge by the third would still pass every other test in this file.
+                    for (VisibleCard const& card : cards) {
+                        CHECK(card.left >= workArea.left);
+                        CHECK(card.right <= workArea.right);
+                        CHECK(card.top >= workArea.top);
+                        CHECK(card.bottom <= workArea.bottom);
+                    }
+
+                    // The gap is kept on the anchored edge or edges, whatever the taskbar did
+                    // to the work area's shape.
+                    VisibleCard const& first = cards.front();
+                    if (positionEntry.position == ToastPosition::TopLeft ||
+                        positionEntry.position == ToastPosition::BottomLeft) {
+                        CHECK(first.left == workArea.left + scale.gapPx);
+                    }
+                    if (positionEntry.position == ToastPosition::TopRight ||
+                        positionEntry.position == ToastPosition::BottomRight) {
+                        CHECK(first.right == workArea.right - scale.gapPx);
+                    }
+                    if (positionEntry.anchoredToTop) {
+                        CHECK(first.top == workArea.top + scale.gapPx);
+                    } else {
+                        CHECK(first.bottom == workArea.bottom - scale.gapPx);
+                    }
+
+                    // Cards never overlap: each one sits at the same x as the others and, in
+                    // y, strictly beyond the one nearer the anchor -- which is what "stacks
+                    // away from the anchor edge" comes down to for a caller that only ever
+                    // grows the offset by a full card at a time.
+                    for (std::size_t i = 1; i < cards.size(); ++i) {
+                        VisibleCard const& nearer = cards[i - 1];
+                        VisibleCard const& farther = cards[i];
+                        CHECK(farther.left == nearer.left);
+                        CHECK(farther.right == nearer.right);
+                        if (positionEntry.anchoredToTop) {
+                            CHECK(farther.top >= nearer.bottom);
+                        } else {
+                            CHECK(farther.bottom <= nearer.top);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
