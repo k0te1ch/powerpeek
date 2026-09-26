@@ -10,6 +10,7 @@ namespace {
 
 constexpr std::string_view kByteOrderMark = "\xEF\xBB\xBF";
 constexpr std::string_view kLineEnd = "\r\n";
+constexpr std::string_view kFormulaLeads = "=+-@\t\r";
 
 // Fixed English words rather than the localised status text: a column that changes language
 // with the UI setting cannot be filtered on.
@@ -30,7 +31,13 @@ std::string_view chargeWord(ChargeState state) {
 }  // namespace
 
 std::string csvField(std::wstring_view value) {
-    std::string const utf8 = narrow(value);
+    std::string utf8 = narrow(value);
+    // A spreadsheet runs a cell that opens with one of these as a formula, and a device name is
+    // text the user or the device chose. A leading single quote makes Excel and LibreOffice
+    // show it as text, which is what the OWASP guidance on CSV injection prescribes.
+    if (!utf8.empty() && kFormulaLeads.find(utf8.front()) != std::string_view::npos) {
+        utf8.insert(utf8.begin(), '\'');
+    }
     if (utf8.find_first_of(",\"\r\n") == std::string::npos) {
         return utf8;
     }
