@@ -21,6 +21,8 @@ std::wstring_view eventGlyph(NotificationEvent event) {
         case NotificationEvent::Disconnected: return glyph::kClose;
         case NotificationEvent::BatteryLow: return glyph::kBatteryUnknown;
         case NotificationEvent::BatteryCritical: return glyph::kWarning;
+        case NotificationEvent::UnplugReminder:
+        case NotificationEvent::ChargeReminder: return glyph::kCharging;
         case NotificationEvent::FullyCharged: break;
     }
     return glyph::kCompleted;

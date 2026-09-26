@@ -9,18 +9,22 @@
 
 namespace peek {
 
-// The five things worth telling the user about. The order matches the RCDATA sound
-// resources in resources/resource.h, so the built-in sound for an event is
-// IDW_SOUND_FIRST + index.
+// The things worth telling the user about. The order matches the RCDATA sound resources in
+// resources/resource.h, so the built-in sound for an event is IDW_SOUND_FIRST + index. New
+// events go at the end: the settings file matches them by key, but the sounds by position.
 enum class NotificationEvent {
     Connected,
     Disconnected,
     BatteryLow,
     BatteryCritical,
     FullyCharged,
+    // Full on the charger for longer than the reminder delay.
+    UnplugReminder,
+    // Put away low and not back on a charger within the reminder delay.
+    ChargeReminder,
 };
 
-inline constexpr std::size_t kNotificationEventCount = 5;
+inline constexpr std::size_t kNotificationEventCount = 7;
 
 constexpr std::size_t index(NotificationEvent event) noexcept {
     return static_cast<std::size_t>(event);
@@ -153,6 +157,13 @@ struct Settings {
     // minutes, whatever the level. Zero switches it off, which is the default: the
     // projection needs a stretch of discharge history before it says anything at all.
     int lowTimeLeftMinutes = 0;
+
+    // The unplug and charge reminders. Off by default: they are the only events that
+    // interrupt about something the user did on purpose, and a controller whose battery
+    // manages its own charging does not need the first one at all -- an update should not
+    // start nagging people who never asked for it.
+    bool remindersEnabled = false;
+    int reminderDelayMinutes = 30;
 
     ThemePreference theme = ThemePreference::System;
     LanguagePreference language = LanguagePreference::System;

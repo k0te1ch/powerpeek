@@ -34,6 +34,8 @@ Text titleTextFor(NotificationEvent event) {
         case NotificationEvent::BatteryLow: return Text::ToastLow;
         case NotificationEvent::BatteryCritical: return Text::ToastCritical;
         case NotificationEvent::FullyCharged: return Text::ToastCharged;
+        case NotificationEvent::UnplugReminder: return Text::ToastUnplug;
+        case NotificationEvent::ChargeReminder: return Text::ToastPutOnCharge;
     }
     return Text::AppName;
 }
@@ -73,6 +75,10 @@ Appearance appearanceFor(NotificationEvent event) {
             return {ui::glyph::kWarning, colors.critical};
         case NotificationEvent::FullyCharged:
             return {ui::glyph::kCompleted, colors.success};
+        case NotificationEvent::UnplugReminder:
+            return {ui::glyph::kCharging, colors.success};
+        case NotificationEvent::ChargeReminder:
+            return {ui::glyph::kCharging, colors.caution};
     }
     return {ui::glyph::kInfo, colors.accent};
 }
@@ -124,8 +130,12 @@ DeviceInfo previewController(NotificationEvent event, Settings const& settings) 
             controller.percent = settings.criticalThresholdPercent;
             break;
         case NotificationEvent::FullyCharged:
+        case NotificationEvent::UnplugReminder:
             controller.percent = 100;
             controller.charge = ChargeState::Full;
+            break;
+        case NotificationEvent::ChargeReminder:
+            controller.percent = settings.lowThresholdPercent;
             break;
         case NotificationEvent::Connected:
         case NotificationEvent::Disconnected:

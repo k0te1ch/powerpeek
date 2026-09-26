@@ -35,7 +35,8 @@ no network code.
 |   | |
 |---|---|
 | **Live tray icon** | Drawn at runtime rather than chosen from a set of prebuilt images — a battery, a ring gauge or a plain percentage, in your theme and accent colour, at whatever size the shell asks for. With several pads connected it shows the lowest level and how many there are. |
-| **Sounds you choose** | Five events — connected, disconnected, low, critically low, fully charged — each with its own sound file, its own volume, and a Test button. WAV, MP3, FLAC, M4A. Five built-in chimes ship inside the executable. |
+| **Sounds you choose** | Seven events — connected, disconnected, low, critically low, fully charged, and the two charging reminders — each with its own sound file, its own volume, and a Test button. WAV, MP3, FLAC, M4A. Built-in chimes ship inside the executable. |
+| **Charging reminders** | Optional, off by default. Once per charge, a nudge to unplug a controller that has sat full on the charger, or to charge one that was put away low and never came back. The delay is yours to pick. |
 | **Two kinds of notification** | The app's own Fluent card, which never steals focus from a game, and real Windows notifications that land in the Action Center. Per event, independently — and the app's own cards go in whichever corner or edge you send them to, which is how you keep them clear of the system's own toasts and of a game's overlay. |
 | **Battery history** | A chart of how each controller drains, the drain rate, and an estimate of how long is left. |
 | **A window that belongs on Windows** | Custom-drawn Fluent chrome, light and dark themes that follow the system, per-monitor DPI, and animation that costs nothing when nothing is moving. |
@@ -164,7 +165,7 @@ way — and they have the advantage of never stealing focus from a game.
 <details>
 <summary><b>Can I use my own sounds?</b></summary>
 
-Yes — that is rather the point. Each of the five events takes its own file: WAV, MP3, FLAC, M4A, or
+Yes — that is rather the point. Each of the seven events takes its own file: WAV, MP3, FLAC, M4A, or
 anything else you have a codec for. Each has its own volume and a Test button, and Reset puts the
 built-in chime back.
 </details>

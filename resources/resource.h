@@ -12,4 +12,6 @@
 #define IDW_SOUND_LOW           202
 #define IDW_SOUND_CRITICAL      203
 #define IDW_SOUND_CHARGED       204
-#define IDW_SOUND_LAST          204
+#define IDW_SOUND_UNPLUG        205
+#define IDW_SOUND_PUT_ON_CHARGE 206
+#define IDW_SOUND_LAST          206

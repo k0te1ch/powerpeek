@@ -61,6 +61,8 @@ void checkSettingsMatch(Settings const& actual, Settings const& expected) {
     CHECK(actual.criticalThresholdPercent == expected.criticalThresholdPercent);
     CHECK(actual.notificationCooldownMinutes == expected.notificationCooldownMinutes);
     CHECK(actual.lowTimeLeftMinutes == expected.lowTimeLeftMinutes);
+    CHECK(actual.remindersEnabled == expected.remindersEnabled);
+    CHECK(actual.reminderDelayMinutes == expected.reminderDelayMinutes);
     CHECK(actual.theme == expected.theme);
     CHECK(actual.language == expected.language);
     CHECK(actual.trayStyle == expected.trayStyle);
@@ -96,6 +98,9 @@ TEST_CASE("settings: the defaults match what the header documents") {
     CHECK(settings.lowThresholdPercent == 20);
     CHECK(settings.criticalThresholdPercent == 10);
     CHECK(settings.notificationCooldownMinutes == 30);
+    // Reminders interrupt about something the user did on purpose, so they are opt-in.
+    CHECK_FALSE(settings.remindersEnabled);
+    CHECK(settings.reminderDelayMinutes == 30);
 
     CHECK(settings.theme == ThemePreference::System);
     CHECK(settings.language == LanguagePreference::System);
@@ -152,6 +157,8 @@ TEST_CASE("settings: each event carries its own defaults") {
         CHECK_FALSE(settings.forEvent(NotificationEvent::Disconnected).showSystemToast);
         CHECK_FALSE(settings.forEvent(NotificationEvent::BatteryLow).showSystemToast);
         CHECK_FALSE(settings.forEvent(NotificationEvent::FullyCharged).showSystemToast);
+        CHECK_FALSE(settings.forEvent(NotificationEvent::UnplugReminder).showSystemToast);
+        CHECK_FALSE(settings.forEvent(NotificationEvent::ChargeReminder).showSystemToast);
     }
 
     SUBCASE("the volumes are graded by how much the event matters") {
@@ -162,18 +169,24 @@ TEST_CASE("settings: each event carries its own defaults") {
         CHECK(settings.forEvent(NotificationEvent::BatteryCritical).volume ==
               doctest::Approx(1.0f));
         CHECK(settings.forEvent(NotificationEvent::FullyCharged).volume == doctest::Approx(0.6f));
+        CHECK(settings.forEvent(NotificationEvent::UnplugReminder).volume ==
+              doctest::Approx(0.6f));
+        CHECK(settings.forEvent(NotificationEvent::ChargeReminder).volume ==
+              doctest::Approx(0.6f));
     }
 }
 
 TEST_CASE("settings: forEvent indexes the array in enum order") {
     // The order is load-bearing twice over: the built-in sound for an event is
     // IDW_SOUND_FIRST + index, and the settings file keys are matched by the same index.
-    CHECK(peek::kNotificationEventCount == 5u);
+    CHECK(peek::kNotificationEventCount == 7u);
     CHECK(peek::index(NotificationEvent::Connected) == 0u);
     CHECK(peek::index(NotificationEvent::Disconnected) == 1u);
     CHECK(peek::index(NotificationEvent::BatteryLow) == 2u);
     CHECK(peek::index(NotificationEvent::BatteryCritical) == 3u);
     CHECK(peek::index(NotificationEvent::FullyCharged) == 4u);
+    CHECK(peek::index(NotificationEvent::UnplugReminder) == 5u);
+    CHECK(peek::index(NotificationEvent::ChargeReminder) == 6u);
 
     Settings settings;
     settings.forEvent(NotificationEvent::BatteryLow).volume = 0.25f;
@@ -193,6 +206,10 @@ TEST_CASE("settings: every event has its own display name") {
     CHECK(peek::displayName(NotificationEvent::BatteryCritical) ==
           peek::text(Text::EventCritical));
     CHECK(peek::displayName(NotificationEvent::FullyCharged) == peek::text(Text::EventCharged));
+    CHECK(peek::displayName(NotificationEvent::UnplugReminder) ==
+          peek::text(Text::EventUnplugReminder));
+    CHECK(peek::displayName(NotificationEvent::ChargeReminder) ==
+          peek::text(Text::EventChargeReminder));
 
     CHECK_FALSE(peek::displayName(NotificationEvent::Connected).empty());
 }
@@ -537,6 +554,20 @@ TEST_CASE("settings: the notification cooldown is clamped") {
     }
 }
 
+TEST_CASE("settings: the reminder delay is clamped") {
+    TempDir dir;
+
+    SUBCASE("zero would remind on the very next check") {
+        CHECK(loadDocument(dir, R"json({"reminderDelayMinutes": 0})json")
+                  .reminderDelayMinutes == 1);
+    }
+
+    SUBCASE("beyond a day") {
+        CHECK(loadDocument(dir, R"json({"reminderDelayMinutes": 100000})json")
+                  .reminderDelayMinutes == 1440);
+    }
+}
+
 TEST_CASE("settings: the history retention window is clamped") {
     TempDir dir;
 
@@ -863,6 +894,8 @@ TEST_CASE("settings: save then load round-trips every field") {
     written.criticalThresholdPercent = 15;
     written.notificationCooldownMinutes = 5;
     written.lowTimeLeftMinutes = 25;
+    written.remindersEnabled = true;
+    written.reminderDelayMinutes = 60;
     written.theme = ThemePreference::Dark;
     written.language = LanguagePreference::Russian;
     written.trayStyle = TrayStyle::Percentage;
@@ -891,6 +924,12 @@ TEST_CASE("settings: save then load round-trips every field") {
     written.forEvent(NotificationEvent::FullyCharged) = EventSettings{
         .enabled = false, .playSound = true, .showFlyout = true, .showSystemToast = false,
         .soundFile = L"five.wav", .volume = 0.50f};
+    written.forEvent(NotificationEvent::UnplugReminder) = EventSettings{
+        .enabled = true, .playSound = false, .showFlyout = false, .showSystemToast = true,
+        .soundFile = L"six.wav", .volume = 0.60f};
+    written.forEvent(NotificationEvent::ChargeReminder) = EventSettings{
+        .enabled = false, .playSound = false, .showFlyout = false, .showSystemToast = false,
+        .soundFile = L"seven.wav", .volume = 0.70f};
 
     REQUIRE(written.save(file));
     checkSettingsMatch(Settings::load(file), written);

@@ -75,6 +75,10 @@ std::wstring eventName(NotificationEvent event) {
             return L"BatteryCritical";
         case NotificationEvent::FullyCharged:
             return L"FullyCharged";
+        case NotificationEvent::UnplugReminder:
+            return L"UnplugReminder";
+        case NotificationEvent::ChargeReminder:
+            return L"ChargeReminder";
     }
     return L"<unknown>";
 }

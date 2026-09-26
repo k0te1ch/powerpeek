@@ -21,6 +21,7 @@ namespace {
 
 constexpr int kPollOptions[]{10, 15, 30, 60, 120, 300};
 constexpr int kCooldownOptions[]{5, 15, 30, 60, 120, 240};
+constexpr int kReminderOptions[]{15, 30, 60, 120};
 constexpr int kRetentionOptions[]{7, 14, 30, 90, 365};
 
 constexpr float kThresholdStep = 5.0f;
@@ -191,6 +192,26 @@ void SettingsPage::addMonitoring(StackPanel& column) {
         [this](int picked) {
             Settings next = SettingsStore::instance().get();
             next.notificationCooldownMinutes = kCooldownOptions[static_cast<std::size_t>(picked)];
+            m_context.applySettings(std::move(next));
+        }));
+
+    auto* reminders = group->addCard(glyph::kCharging, std::wstring(text(Text::Reminders)));
+    reminders->setDescription(std::wstring(text(Text::RemindersDesc)));
+    reminders->setControl(std::make_unique<ToggleSwitch>(
+        SettingsStore::instance().get().remindersEnabled, [this](bool on) {
+            Settings next = SettingsStore::instance().get();
+            next.remindersEnabled = on;
+            m_context.applySettings(std::move(next));
+        }));
+
+    auto* delay = group->addCard(glyph::kRefresh, std::wstring(text(Text::ReminderDelay)));
+    delay->setDescription(std::wstring(text(Text::ReminderDelayDesc)));
+    delay->setControl(std::make_unique<ComboBox>(
+        labelsFor(kReminderOptions, minutesLabel),
+        nearestIndex(kReminderOptions, SettingsStore::instance().get().reminderDelayMinutes),
+        [this](int picked) {
+            Settings next = SettingsStore::instance().get();
+            next.reminderDelayMinutes = kReminderOptions[static_cast<std::size_t>(picked)];
             m_context.applySettings(std::move(next));
         }));
 }
