@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <string>
@@ -288,6 +289,16 @@ void BatteryHistory::record(DeviceInfo const& controller) {
 std::vector<HistorySample> BatteryHistory::samplesFor(std::wstring const& controllerId) const {
     std::scoped_lock lock{m_impl->mutex};
     return m_impl->within(controllerId);
+}
+
+std::vector<HistorySample> BatteryHistory::allSamples() const {
+    std::scoped_lock lock{m_impl->mutex};
+    auto const cutoff = Clock::now() - m_impl->retention;
+
+    std::vector<HistorySample> result;
+    std::copy_if(m_impl->samples.begin(), m_impl->samples.end(), std::back_inserter(result),
+                 [cutoff](HistorySample const& sample) { return sample.when >= cutoff; });
+    return result;
 }
 
 std::optional<double> BatteryHistory::drainPercentPerHour(std::wstring const& controllerId) const {

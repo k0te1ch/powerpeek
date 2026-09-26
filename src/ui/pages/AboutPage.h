@@ -4,8 +4,8 @@
 
 namespace peek::ui {
 
-// Version, what the application actually does, and the two places worth opening: the folder
-// its data lives in and the repository it came from.
+// Version, what the application actually does, and the places worth opening: the folder its
+// data lives in, its log, and the repository it came from.
 class AboutPage : public Page {
 public:
     explicit AboutPage(PageContext context);
