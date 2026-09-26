@@ -40,6 +40,26 @@ option(PP_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 # stays dependency-free and works offline, which is the point.
 option(PP_BUILD_TESTS "Build the unit tests" OFF)
 
+# Both are for the test and fuzz presets only. AddressSanitizer has to cover the code under
+# test, not just the test binary, so it is applied to every target in the directory rather
+# than to one. The fuzzers additionally need libFuzzer's coverage instrumentation in
+# PowerPeekCore, which only makes sense in a tree that builds nothing but fuzz targets.
+option(PP_ENABLE_ASAN "Build with MSVC AddressSanitizer" OFF)
+option(PP_BUILD_FUZZERS "Build the libFuzzer targets (implies PP_ENABLE_ASAN)" OFF)
+if(PP_BUILD_FUZZERS)
+    set(PP_ENABLE_ASAN ON CACHE BOOL "" FORCE)
+endif()
+
+if(PP_ENABLE_ASAN)
+    # ASan wants full debug info and refuses /RTC and incremental linking. CMake's default
+    # Debug flags carry /RTC1, so strip it rather than trusting the preset's build type.
+    foreach(flags_var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG)
+        string(REGEX REPLACE "/RTC[1csu]*" "" ${flags_var} "${${flags_var}}")
+    endforeach()
+    add_compile_options(/fsanitize=address /Zi)
+    add_link_options(/DEBUG /INCREMENTAL:NO)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -127,6 +147,9 @@ list(TRANSFORM PP_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/src/")
 add_library(PowerPeekCore STATIC ${PP_CORE_SOURCES})
 
 target_link_libraries(PowerPeekCore PUBLIC pp_compile_settings)
+if(PP_BUILD_FUZZERS)
+    target_compile_options(PowerPeekCore PRIVATE /fsanitize=fuzzer)
+endif()
 target_link_libraries(PowerPeekCore PRIVATE
     shell32     # SHGetKnownFolderPath, for %LOCALAPPDATA%
     ole32)      # CoTaskMemFree, which frees what that returns
@@ -192,4 +215,8 @@ install(TARGETS PowerPeek RUNTIME DESTINATION .)
 if(PP_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+if(PP_BUILD_FUZZERS)
+    add_subdirectory(fuzz)
 endif()

@@ -42,6 +42,46 @@ jobs:
           path: build/tests/junit.xml
           if-no-files-found: warn
 
+  # The same tests again with every object built under /fsanitize=address. A separate job
+  # and build tree, so a memory error reads as its own failure and the sanitised objects
+  # never meet the shipped build.
+  asan:
+    name: Unit tests under AddressSanitizer (x64)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run the unit tests under ASan
+        shell: cmd
+        run: call tools\asan.bat || exit /b 1
+
+  # A short, time-boxed libFuzzer run of each file parser, starting from the checked-in
+  # seeds. It will not find deep bugs in a minute; it stops a change that breaks the parsers
+  # on trivial malformed input from merging.
+  fuzz:
+    name: Fuzz the parsers (x64)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run the fuzzers
+        shell: cmd
+        run: call tools\fuzz.bat 60 || exit /b 1
+
+      - name: Upload crash reproducers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PowerPeek-fuzz-crashes
+          path: |
+            build/fuzz/crash-*
+            build/fuzz/leak-*
+            build/fuzz/timeout-*
+            build/fuzz/oom-*
+          if-no-files-found: ignore
+
   build:
     name: Build (x64, RelWithDebInfo)
     runs-on: windows-latest

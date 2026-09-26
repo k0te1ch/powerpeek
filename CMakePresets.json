@@ -37,12 +37,30 @@
         "PP_WARNINGS_AS_ERRORS": "ON",
         "PP_BUILD_TESTS": "ON"
       }
+    },
+    {
+      "name": "asan",
+      "displayName": "Unit tests under AddressSanitizer (x64)",
+      "inherits": "tests",
+      "cacheVariables": { "PP_ENABLE_ASAN": "ON" }
+    },
+    {
+      "name": "fuzz",
+      "displayName": "libFuzzer targets (x64)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "PP_WARNINGS_AS_ERRORS": "ON",
+        "PP_BUILD_FUZZERS": "ON"
+      }
     }
   ],
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
     { "name": "release", "configurePreset": "release" },
-    { "name": "tests", "configurePreset": "tests", "targets": ["pp_tests"] }
+    { "name": "tests", "configurePreset": "tests", "targets": ["pp_tests"] },
+    { "name": "asan", "configurePreset": "asan", "targets": ["pp_tests"] },
+    { "name": "fuzz", "configurePreset": "fuzz", "targets": ["pp_fuzz_wav", "pp_fuzz_json"] }
   ],
   "testPresets": [
     {
@@ -50,6 +68,11 @@
       "configurePreset": "tests",
       "output": { "outputOnFailure": true },
       "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    },
+    {
+      "name": "asan",
+      "inherits": "tests",
+      "configurePreset": "asan"
     }
   ]
 }
