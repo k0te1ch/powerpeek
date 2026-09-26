@@ -19,6 +19,8 @@ IDW_SOUND_DISCONNECTED  RCDATA "sounds/disconnected.wav"
 IDW_SOUND_LOW           RCDATA "sounds/low.wav"
 IDW_SOUND_CRITICAL      RCDATA "sounds/critical.wav"
 IDW_SOUND_CHARGED       RCDATA "sounds/charged.wav"
+IDW_SOUND_UNPLUG        RCDATA "sounds/charged.wav"
+IDW_SOUND_PUT_ON_CHARGE RCDATA "sounds/low.wav"
 
 VS_VERSION_INFO VERSIONINFO
     FILEVERSION     PP_VERSION_RC_FILEVERSION

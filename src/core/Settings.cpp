@@ -30,11 +30,14 @@ constexpr int kMaxThresholdPercent = 95;
 constexpr int kMinLowThresholdPercent = kMinThresholdPercent + 1;
 constexpr int kMaxCooldownMinutes = 24 * 60;
 constexpr int kMaxTimeLeftMinutes = 24 * 60;
+constexpr int kMinReminderMinutes = 1;
+constexpr int kMaxReminderMinutes = 24 * 60;
 constexpr int kMinRetentionDays = 1;
 constexpr int kMaxRetentionDays = 365;
 
 constexpr std::array<char const*, kNotificationEventCount> kEventKeys = {
-    "connected", "disconnected", "batteryLow", "batteryCritical", "fullyCharged",
+    "connected",    "disconnected",   "batteryLow",     "batteryCritical",
+    "fullyCharged", "unplugReminder", "chargeReminder",
 };
 
 constexpr std::array<std::pair<ThemePreference, char const*>, 3> kThemeNames = {{
@@ -122,6 +125,8 @@ json::Value toJson(Settings const& settings) {
     root.set("criticalThresholdPercent", settings.criticalThresholdPercent);
     root.set("notificationCooldownMinutes", settings.notificationCooldownMinutes);
     root.set("lowTimeLeftMinutes", settings.lowTimeLeftMinutes);
+    root.set("remindersEnabled", settings.remindersEnabled);
+    root.set("reminderDelayMinutes", settings.reminderDelayMinutes);
 
     root.set("theme", enumName(kThemeNames, settings.theme));
     root.set("language", enumName(kLanguageNames, settings.language));
@@ -212,7 +217,8 @@ bool writeTempFile(std::filesystem::path const& temp, std::string const& text) {
 std::wstring_view displayName(NotificationEvent event) {
     constexpr std::array<Text, kNotificationEventCount> kNames = {
         Text::EventConnected, Text::EventDisconnected, Text::EventLow,
-        Text::EventCritical,  Text::EventCharged,
+        Text::EventCritical,  Text::EventCharged,      Text::EventUnplugReminder,
+        Text::EventChargeReminder,
     };
     return text(kNames[index(event)]);
 }
@@ -224,6 +230,9 @@ std::array<EventSettings, kNotificationEventCount> Settings::defaultEvents() {
     events[index(NotificationEvent::Disconnected)].volume = 0.7f;
     events[index(NotificationEvent::BatteryLow)].volume = 0.9f;
     events[index(NotificationEvent::FullyCharged)].volume = 0.6f;
+    // Reminders about something that can wait; they should not sound like an alarm.
+    events[index(NotificationEvent::UnplugReminder)].volume = 0.6f;
+    events[index(NotificationEvent::ChargeReminder)].volume = 0.6f;
 
     // The one event a user must not miss because the flyout appeared while they were away
     // from the screen; the Action Center keeps it.
@@ -302,6 +311,10 @@ Settings Settings::load(std::filesystem::path const& file) {
     settings.lowTimeLeftMinutes =
         std::clamp(root["lowTimeLeftMinutes"].asInt(settings.lowTimeLeftMinutes), 0,
                    kMaxTimeLeftMinutes);
+    settings.remindersEnabled = root["remindersEnabled"].asBool(settings.remindersEnabled);
+    settings.reminderDelayMinutes =
+        std::clamp(root["reminderDelayMinutes"].asInt(settings.reminderDelayMinutes),
+                   kMinReminderMinutes, kMaxReminderMinutes);
 
     settings.theme = parseEnum(kThemeNames, root["theme"], settings.theme);
     settings.language = parseEnum(kLanguageNames, root["language"], settings.language);

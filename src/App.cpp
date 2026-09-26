@@ -8,6 +8,7 @@
 
 #include "audio/AudioEngine.h"
 #include "battery/BatteryHistory.h"
+#include "battery/ChargeReminder.h"
 #include "battery/ControllerMonitor.h"
 #include "battery/DeviceInfo.h"
 #include "battery/EventDetector.h"
@@ -37,6 +38,12 @@ constexpr UINT kControllersChangedMessage = WM_APP + 0x20;
 constexpr UINT_PTR kDeviceSettleTimer = 1;
 constexpr UINT kDeviceSettleMs = 750;
 
+// The reminders are about time passing with nothing changing, which is exactly when the
+// monitor stays quiet, so they are asked again on a clock of their own. A minute is fine
+// enough for a delay counted in quarter hours.
+constexpr UINT_PTR kReminderTimer = 2;
+constexpr UINT kReminderIntervalMs = 60 * 1000;
+
 std::chrono::seconds pollInterval(Settings const& settings) {
     return std::chrono::seconds{settings.pollIntervalSeconds};
 }
@@ -58,6 +65,7 @@ struct App::Impl {
 
     platform::SingleInstance singleInstance;
     EventDetector detector;
+    ChargeReminder reminders;
     std::vector<DeviceInfo> controllers;
 
     std::unique_ptr<BatteryHistory> history;
@@ -74,6 +82,7 @@ struct App::Impl {
     void shutdown();
 
     void onControllersChanged();
+    void checkReminders();
     void onSettingsChanged(Settings const& current, Settings const& previous);
     void onSystemColorsChanged();
     void toggleMainWindow();
@@ -163,6 +172,10 @@ void App::Impl::connectSignals() {
         [this](Settings const& current, Settings const& previous) {
             onSettingsChanged(current, previous);
         });
+
+    if (SetTimer(hub, kReminderTimer, kReminderIntervalMs, nullptr) == 0) {
+        log::warning(L"Could not start the reminder timer; reminders only follow device changes");
+    }
 }
 
 void App::Impl::onControllersChanged() {
@@ -179,6 +192,10 @@ void App::Impl::onControllersChanged() {
                                                       remaining)) {
         notifications->post(event);
     }
+    for (DetectedEvent const& event : reminders.update(snapshot, settings,
+                                                       std::chrono::system_clock::now())) {
+        notifications->post(event);
+    }
     for (DeviceInfo const& controller : snapshot) {
         history->record(controller);
     }
@@ -186,6 +203,13 @@ void App::Impl::onControllersChanged() {
     controllers = std::move(snapshot);
     tray->update(controllers, settings);
     window->setControllers(controllers);
+}
+
+void App::Impl::checkReminders() {
+    for (DetectedEvent const& event : reminders.update(controllers, SettingsStore::instance().get(),
+                                                       std::chrono::system_clock::now())) {
+        notifications->post(event);
+    }
 }
 
 void App::Impl::onSettingsChanged(Settings const& current, Settings const& previous) {
@@ -355,6 +379,8 @@ LRESULT App::Impl::handleMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
                 if (monitor) {
                     monitor->refreshNow();
                 }
+            } else if (wparam == kReminderTimer && notifications) {
+                checkReminders();
             }
             return 0;
 

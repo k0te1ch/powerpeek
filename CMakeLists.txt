@@ -137,6 +137,7 @@ set(PP_CORE_SOURCES
     battery/BatteryHistory.cpp
     battery/DeviceInfo.cpp
     battery/DeviceMerge.cpp
+    battery/ChargeReminder.cpp
     battery/EventDetector.cpp
     battery/HistoryCsv.cpp
     audio/WavReader.cpp
