@@ -53,6 +53,7 @@ void checkEventMatches(EventSettings const& actual, EventSettings const& expecte
 
 void checkSettingsMatch(Settings const& actual, Settings const& expected) {
     CHECK(actual.startWithWindows == expected.startWithWindows);
+    CHECK(actual.deviceNames == expected.deviceNames);
     CHECK(actual.startMinimised == expected.startMinimised);
     CHECK(actual.minimiseToTrayOnClose == expected.minimiseToTrayOnClose);
     CHECK(actual.includeNonXboxGamepads == expected.includeNonXboxGamepads);
@@ -1162,4 +1163,107 @@ TEST_CASE("settings: unknown keys do not survive a save") {
     // is dropped the first time the settings are written again.
     CHECK(text.find("bikeshed") == std::string::npos);
     CHECK(Settings::load(file).pollIntervalSeconds == 45);
+}
+
+TEST_CASE("settings: device names survive a save and a load") {
+    TempDir dir;
+    std::filesystem::path const file = dir.file(L"settings.json");
+
+    Settings original;
+    original.setDeviceName(L"{wgi}\\pad-1", L"Living room");
+    original.setDeviceName(L"xinput-2", L"Пульт Лёши");
+    REQUIRE(original.save(file));
+
+    Settings const loaded = Settings::load(file);
+    CHECK(loaded.deviceNames == original.deviceNames);
+    checkSettingsMatch(loaded, original);
+}
+
+TEST_CASE("settings: a file without device names has none") {
+    TempDir dir;
+    CHECK(loadDocument(dir, "{\"version\": 1, \"pollIntervalSeconds\": 45}").deviceNames.empty());
+}
+
+TEST_CASE("settings: unusable device names in the file are dropped") {
+    TempDir dir;
+    Settings const settings = loadDocument(dir, R"({
+        "version": 1,
+        "deviceNames": {
+            "pad-1": "Desk",
+            "pad-2": 42,
+            "pad-3": "   ",
+            "pad-4": null,
+            "": "No device",
+            "pad-5": "  Couch\t"
+        }
+    })");
+
+    peek::DeviceNames const expected{{L"pad-1", L"Desk"}, {L"pad-5", L"Couch"}};
+    CHECK(settings.deviceNames == expected);
+}
+
+TEST_CASE("settings: device names of the wrong shape are ignored") {
+    TempDir dir;
+    CHECK(loadDocument(dir, R"({"deviceNames": ["pad-1", "Desk"]})").deviceNames.empty());
+    CHECK(loadDocument(dir, R"({"deviceNames": "Desk"})").deviceNames.empty());
+}
+
+TEST_CASE("settings: device names from a newer file are left alone") {
+    TempDir dir;
+    std::filesystem::path const file = dir.file(L"settings.json");
+    std::string const document = R"({"version": 99, "deviceNames": {"pad-1": "Desk"}})";
+    writeText(file, document);
+
+    Settings const settings = Settings::load(file);
+    CHECK(settings.deviceNames.empty());
+    CHECK_FALSE(settings.save(file));
+    CHECK(readText(file) == document);
+}
+
+TEST_CASE("settings: setDeviceName stores, replaces and clears") {
+    Settings settings;
+
+    settings.setDeviceName(L"pad-1", L"Desk");
+    CHECK(settings.deviceNames.at(L"pad-1") == L"Desk");
+
+    settings.setDeviceName(L"pad-1", L"Couch");
+    CHECK(settings.deviceNames.at(L"pad-1") == L"Couch");
+    CHECK(settings.deviceNames.size() == 1);
+
+    SUBCASE("an empty name resets the device") {
+        settings.setDeviceName(L"pad-1", L"");
+        CHECK(settings.deviceNames.empty());
+    }
+    SUBCASE("a name of only whitespace resets the device") {
+        settings.setDeviceName(L"pad-1", L" \t ");
+        CHECK(settings.deviceNames.empty());
+    }
+    SUBCASE("clearing a device that has no name is harmless") {
+        settings.setDeviceName(L"pad-9", L"");
+        CHECK(settings.deviceNames.size() == 1);
+    }
+}
+
+TEST_CASE("settings: normaliseDeviceName trims, flattens and caps") {
+    using peek::kMaxDeviceNameLength;
+    using peek::normaliseDeviceName;
+
+    CHECK(normaliseDeviceName(L"  Desk  ") == L"Desk");
+    CHECK(normaliseDeviceName(L"Left\nRight") == L"Left Right");
+    CHECK(normaliseDeviceName(L"") == L"");
+
+    std::wstring const longName(kMaxDeviceNameLength + 10, L'x');
+    CHECK(normaliseDeviceName(longName).size() == kMaxDeviceNameLength);
+
+    SUBCASE("the cap never splits a surrogate pair") {
+        std::wstring name(kMaxDeviceNameLength - 1, L'x');
+        name += L"\U0001F3AE";  // two UTF-16 units straddling the cap
+        std::wstring const result = normaliseDeviceName(name);
+        CHECK(result == std::wstring(kMaxDeviceNameLength - 1, L'x'));
+    }
+    SUBCASE("the cap does not leave trailing whitespace behind") {
+        std::wstring name(kMaxDeviceNameLength - 1, L'x');
+        name += L"  tail";
+        CHECK(normaliseDeviceName(name) == std::wstring(kMaxDeviceNameLength - 1, L'x'));
+    }
 }

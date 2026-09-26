@@ -11,6 +11,7 @@
 #include "battery/ChargeReminder.h"
 #include "battery/ControllerMonitor.h"
 #include "battery/DeviceInfo.h"
+#include "battery/DeviceNames.h"
 #include "battery/EventDetector.h"
 #include "core/AppPaths.h"
 #include "core/Logger.h"
@@ -83,6 +84,7 @@ struct App::Impl {
 
     void onControllersChanged();
     void checkReminders();
+    void postReminders(std::vector<DetectedEvent> events, Settings const& settings);
     void onSettingsChanged(Settings const& current, Settings const& previous);
     void onSystemColorsChanged();
     void toggleMainWindow();
@@ -181,6 +183,7 @@ void App::Impl::connectSignals() {
 void App::Impl::onControllersChanged() {
     std::vector<DeviceInfo> snapshot = monitor->snapshot();
     Settings const& settings = SettingsStore::instance().get();
+    applyDeviceNames(snapshot, settings.deviceNames);
 
     // Announced before anything is drawn: the sound is the part the user notices, and it
     // should not wait behind a window that may not even be visible.
@@ -192,10 +195,8 @@ void App::Impl::onControllersChanged() {
                                                       remaining)) {
         notifications->post(event);
     }
-    for (DetectedEvent const& event : reminders.update(snapshot, settings,
-                                                       std::chrono::system_clock::now())) {
-        notifications->post(event);
-    }
+    postReminders(reminders.update(snapshot, settings, std::chrono::system_clock::now()),
+                  settings);
     for (DeviceInfo const& controller : snapshot) {
         history->record(controller);
     }
@@ -206,8 +207,16 @@ void App::Impl::onControllersChanged() {
 }
 
 void App::Impl::checkReminders() {
-    for (DetectedEvent const& event : reminders.update(controllers, SettingsStore::instance().get(),
-                                                       std::chrono::system_clock::now())) {
+    Settings const& settings = SettingsStore::instance().get();
+    postReminders(reminders.update(controllers, settings, std::chrono::system_clock::now()),
+                  settings);
+}
+
+void App::Impl::postReminders(std::vector<DetectedEvent> events, Settings const& settings) {
+    // A charge reminder is about a pad that has left the list, so it carries the reading from
+    // before it went -- and the name it had then. A rename since then has to reach it too.
+    for (DetectedEvent& event : events) {
+        applyDeviceName(event.controller, settings.deviceNames);
         notifications->post(event);
     }
 }
@@ -251,6 +260,11 @@ void App::Impl::onSettingsChanged(Settings const& current, Settings const& previ
         current.criticalThresholdPercent != previous.criticalThresholdPercent ||
         current.lowTimeLeftMinutes != previous.lowTimeLeftMinutes) {
         detector.reset();
+    }
+
+    if (current.deviceNames != previous.deviceNames) {
+        applyDeviceNames(controllers, current.deviceNames);
+        window->setControllers(controllers);
     }
 
     notifications->applySettings(current);

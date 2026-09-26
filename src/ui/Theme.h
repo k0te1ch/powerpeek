@@ -124,6 +124,7 @@ inline constexpr wchar_t kPlay[] = L"\uE768";
 inline constexpr wchar_t kVolume[] = L"\uE767";
 inline constexpr wchar_t kMute[] = L"\uE74F";
 inline constexpr wchar_t kGamepad[] = L"\uE7FC";
+inline constexpr wchar_t kRename[] = L"\uE8AC";
 inline constexpr wchar_t kBluetooth[] = L"\uE702";
 inline constexpr wchar_t kUsb[] = L"\uECF0";
 inline constexpr wchar_t kWireless[] = L"\uE93E";

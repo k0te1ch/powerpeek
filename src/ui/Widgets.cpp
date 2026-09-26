@@ -42,6 +42,11 @@ constexpr float kComboMinWidth = 120.0f;
 constexpr float kChevronGlyphSize = 12.0f;
 constexpr float kComboPopupPadding = 4.0f;
 
+constexpr float kTextBoxWidth = 220.0f;
+constexpr float kTextBoxUnderline = 2.0f;
+constexpr float kTextBoxCaretWidth = 1.0f;
+constexpr float kTextBoxCaretHeight = 18.0f;
+
 constexpr float kExpanderRowInset = 58.0f;
 constexpr float kExpanderRowMinHeight = 52.0f;
 constexpr float kExpanderChevronColumn = 40.0f;
@@ -187,6 +192,7 @@ void Widget::setFocused(bool focused) {
     m_focused = focused;
     m_focusFade.animateTo(focused ? 1.0f : 0.0f, kDurationNormal, Easing::Entrance);
     invalidate();
+    onFocusChanged(focused);
 }
 
 Widget* Container::add(std::unique_ptr<Widget> child) {
@@ -952,6 +958,137 @@ bool ComboBox::onKey(WPARAM key) {
             return true;
         default:
             return false;
+    }
+}
+
+TextBox::TextBox(std::wstring text, std::wstring placeholder, std::size_t maxLength,
+                 Handler onCommit)
+    : m_text(std::move(text)),
+      m_committed(m_text),
+      m_placeholder(std::move(placeholder)),
+      m_maxLength(maxLength),
+      m_onCommit(std::move(onCommit)) {}
+
+float TextBox::desiredWidth() const { return kTextBoxWidth; }
+
+float TextBox::measure(float) { return Metrics::controlHeight; }
+
+void TextBox::paint(Canvas& canvas) {
+    auto const& palette = theme().colors();
+    float const hover = m_hoverFade.value();
+    bool const editing = focused() && enabled();
+
+    D2D1_COLOR_F fill = editing ? palette.cardFill
+                                : mix(palette.controlFill, palette.controlFillSecondary, hover);
+    if (!enabled()) {
+        fill = palette.controlFillDisabled;
+    }
+    fillRounded(canvas, m_bounds, Metrics::controlCornerRadius, fill);
+    strokeControlBorder(canvas, m_bounds, Metrics::controlCornerRadius, palette.controlStroke,
+                        palette.controlStrokeSecondary);
+    if (editing) {
+        // The Fluent text field marks focus with an accent underline rather than a ring.
+        fillRect(canvas,
+                 D2D1::RectF(m_bounds.left + 1.0f, m_bounds.bottom - kTextBoxUnderline,
+                             m_bounds.right - 1.0f, m_bounds.bottom),
+                 palette.accent);
+    }
+
+    auto* format = theme().textFormat(TypeStyle::Body);
+    D2D1_RECT_F const inner = D2D1::RectF(m_bounds.left + kButtonPaddingX, m_bounds.top,
+                                          m_bounds.right - kButtonPaddingX, m_bounds.bottom);
+    if (m_text.empty()) {
+        drawText(canvas, m_placeholder, format, inner,
+                 enabled() ? palette.textSecondary : palette.textDisabled);
+    } else if (!editing) {
+        drawText(canvas, m_text, format, inner,
+                 enabled() ? palette.textPrimary : palette.textDisabled);
+    }
+    if (!editing) {
+        return;
+    }
+
+    // The caret sits at the end of the text, so a name longer than the field scrolls left to
+    // keep the end in view.
+    float const textWidth = measureText(m_text, format);
+    float const offset = std::max(0.0f, textWidth + kTextBoxCaretWidth - widthOf(inner));
+    float const x = inner.left - offset;
+    auto* context = canvas.deviceContext();
+    if (context) {
+        context->PushAxisAlignedClip(inner, D2D1_ANTIALIAS_MODE_ALIASED);
+    }
+    if (!m_text.empty()) {
+        drawText(canvas, m_text, format, D2D1::RectF(x, inner.top, x + textWidth + 1.0f, inner.bottom),
+                 palette.textPrimary);
+    }
+    float const caretX = canvas.snap(x + textWidth);
+    float const caretTop = (m_bounds.top + m_bounds.bottom - kTextBoxCaretHeight) * 0.5f;
+    fillRect(canvas,
+             D2D1::RectF(caretX, caretTop, caretX + kTextBoxCaretWidth,
+                         caretTop + kTextBoxCaretHeight),
+             palette.textPrimary);
+    if (context) {
+        context->PopAxisAlignedClip();
+    }
+}
+
+bool TextBox::onKey(WPARAM key) {
+    switch (key) {
+        case VK_RETURN:
+            commit();
+            return true;
+        case VK_ESCAPE:
+            m_text = m_committed;
+            invalidate();
+            return true;
+        case VK_BACK:
+            if (!m_text.empty()) {
+                m_text.pop_back();
+                if (!m_text.empty() && IS_HIGH_SURROGATE(m_text.back())) {
+                    m_text.pop_back();
+                }
+                invalidate();
+            }
+            return true;
+        // Keys a text field is expected to own, even though this one does nothing with them;
+        // passed on, Home and End would scroll the page out from under the field.
+        case VK_HOME:
+        case VK_END:
+        case VK_LEFT:
+        case VK_RIGHT:
+        case VK_DELETE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool TextBox::onChar(wchar_t character) {
+    // Enter, Backspace and Escape arrive here as control characters too; onKey has them.
+    if (character < L' ' || character == 0x7F) {
+        return true;
+    }
+    if (m_text.size() >= m_maxLength) {
+        return true;
+    }
+    m_text.push_back(character);
+    invalidate();
+    return true;
+}
+
+void TextBox::onFocusChanged(bool focused) {
+    if (!focused) {
+        commit();
+    }
+}
+
+void TextBox::commit() {
+    if (m_text == m_committed) {
+        return;
+    }
+    m_committed = m_text;
+    if (m_onCommit) {
+        m_onCommit(m_text);
     }
 }
 
@@ -2045,6 +2182,13 @@ bool WidgetHost::handleMessage(UINT message, WPARAM wparam, LPARAM lparam, LRESU
             }
             return false;
         }
+
+        case WM_CHAR:
+            if (m_focused && m_focused->enabled() && m_focused->onChar(static_cast<wchar_t>(wparam))) {
+                result = 0;
+                return true;
+            }
+            return false;
 
         default:
             return false;

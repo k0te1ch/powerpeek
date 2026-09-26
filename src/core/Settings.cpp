@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cwctype>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -158,7 +159,28 @@ json::Value toJson(Settings const& settings) {
     }
     root.set("events", std::move(events));
 
+    json::Value names{json::Object{}};
+    for (auto const& [id, name] : settings.deviceNames) {
+        names.set(narrow(id), narrow(name));
+    }
+    root.set("deviceNames", std::move(names));
+
     return root;
+}
+
+// Anything that is not a string, or normalises to nothing, is dropped rather than kept: an
+// entry that cannot be shown is an entry the user cannot see to remove.
+void readDeviceNames(Settings& settings, json::Value const& root) {
+    json::Value const& names = root["deviceNames"];
+    if (names.kind() != json::Value::Kind::Object) {
+        return;
+    }
+    for (auto const& [id, node] : names.asObject()) {
+        if (id.empty() || node.kind() != json::Value::Kind::String) {
+            continue;
+        }
+        settings.setDeviceName(widen(id), node.asWide());
+    }
 }
 
 void readEvents(Settings& settings, json::Value const& root) {
@@ -338,7 +360,41 @@ Settings Settings::load(std::filesystem::path const& file) {
                    kMinRetentionDays, kMaxRetentionDays);
 
     readEvents(settings, root);
+    readDeviceNames(settings, root);
     return settings;
+}
+
+std::wstring normaliseDeviceName(std::wstring_view name) {
+    auto const blank = [](wchar_t c) { return std::iswspace(c) != 0 || std::iswcntrl(c) != 0; };
+
+    std::wstring result;
+    result.reserve(std::min(name.size(), kMaxDeviceNameLength));
+    for (wchar_t const c : name) {
+        // A tab or a line break inside a name would break the tooltip into lines of its own.
+        result.push_back(std::iswcntrl(c) != 0 ? L' ' : c);
+    }
+
+    auto const first = std::find_if_not(result.begin(), result.end(), blank);
+    result.erase(result.begin(), first);
+    if (result.size() > kMaxDeviceNameLength) {
+        result.resize(kMaxDeviceNameLength);
+        // Never end on the first half of a surrogate pair.
+        if (IS_HIGH_SURROGATE(result.back())) {
+            result.pop_back();
+        }
+    }
+    auto const last = std::find_if_not(result.rbegin(), result.rend(), blank);
+    result.erase(last.base(), result.end());
+    return result;
+}
+
+void Settings::setDeviceName(std::wstring const& id, std::wstring_view name) {
+    std::wstring normalised = normaliseDeviceName(name);
+    if (normalised.empty()) {
+        deviceNames.erase(id);
+        return;
+    }
+    deviceNames.insert_or_assign(id, std::move(normalised));
 }
 
 bool Settings::save(std::filesystem::path const& file) const {

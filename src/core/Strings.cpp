@@ -43,6 +43,10 @@ constexpr Entry kTable[] = {
     {Text::EstimatedRemaining, L"About {} left", L"Осталось примерно {}"},
     {Text::UpdatedJustNow, L"Updated just now", L"Обновлено только что"},
     {Text::UpdatedMinutesAgo, L"Updated {} min ago", L"Обновлено {} мин назад"},
+    {Text::DeviceNamesHeader, L"Names", L"Названия"},
+    {Text::DeviceNamesDescription,
+     L"Type a name and press Enter. Clear the field to go back to the device's own name.",
+     L"Введи название и нажми Enter. Очисти поле, чтобы вернуть название устройства."},
 
     {Text::HistoryTitle, L"Battery history", L"История заряда"},
     {Text::HistoryEmpty, L"Not enough data yet", L"Пока недостаточно данных"},

@@ -46,7 +46,10 @@ struct DeviceInfo {
     // Stable across reconnects of the same physical device. Derived from the WinRT
     // NonRoamableId where available, otherwise from vendor/product/slot.
     std::wstring id;
+    // What the device is shown as: the user's name for it when there is one.
     std::wstring name;
+    // What the provider called it; filled in by applyDeviceNames, empty before that.
+    std::wstring reportedName;
 
     std::uint16_t vendorId = 0;
     std::uint16_t productId = 0;

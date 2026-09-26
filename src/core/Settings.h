@@ -3,7 +3,10 @@
 #include <array>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
+#include <map>
 #include <string>
+#include <string_view>
 
 #include "core/Signal.h"
 
@@ -127,6 +130,16 @@ struct EventSettings {
     float volume = 1.0f;
 };
 
+using DeviceNames = std::map<std::wstring, std::wstring, std::less<>>;
+
+// The longest custom device name kept, in UTF-16 units. A name is a label on a card and a
+// line in a tooltip that Windows truncates at 127 characters for every device together.
+inline constexpr std::size_t kMaxDeviceNameLength = 40;
+
+// Strips surrounding whitespace and control characters and caps the length, so that what is
+// stored is exactly what is shown. An empty result means "no custom name".
+std::wstring normaliseDeviceName(std::wstring_view name);
+
 struct Settings {
     // Bumped when a migration is needed. A file left by a newer build is read as the
     // defaults, and its version is kept here rather than dropped -- which is what makes
@@ -191,6 +204,15 @@ struct Settings {
     int historyRetentionDays = 30;
 
     std::array<EventSettings, kNotificationEventCount> events = defaultEvents();
+
+    // Names the user gave devices, keyed by DeviceInfo::id -- the identity that survives a
+    // reconnect and that duplicate readings have already been merged onto. A device with no
+    // entry keeps the name its provider reports. Every stored name is already normalised.
+    DeviceNames deviceNames;
+
+    // Stores `name` for the device, or forgets the device's entry when the name normalises to
+    // nothing, which is how clearing the field resets the name.
+    void setDeviceName(std::wstring const& id, std::wstring_view name);
 
     EventSettings const& forEvent(NotificationEvent event) const { return events[index(event)]; }
     EventSettings& forEvent(NotificationEvent event) { return events[index(event)]; }

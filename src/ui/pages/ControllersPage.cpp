@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "core/Settings.h"
 #include "core/Strings.h"
 #include "ui/Drawing.h"
 #include "ui/pages/PageWidgets.h"
@@ -310,6 +311,34 @@ void ControllersPage::build(StackPanel& column) {
 
     for (auto const& controller : controllers) {
         m_cards.push_back(column.emplace<ControllerCard>(controller, remainingFor(controller)));
+    }
+    buildNames(column);
+}
+
+// One row per device, titled with the name its provider reports so that a renamed device can
+// still be told apart from its twin. The field holds only the custom name: empty means none.
+void ControllersPage::buildNames(StackPanel& column) {
+    auto* group = column.emplace<SettingsGroup>(std::wstring(text(Text::DeviceNamesHeader)),
+                                                std::wstring(text(Text::DeviceNamesDescription)));
+    DeviceNames const& names = SettingsStore::instance().get().deviceNames;
+    for (auto const& controller : *m_context.controllers) {
+        std::wstring const& reported =
+            controller.reportedName.empty() ? controller.name : controller.reportedName;
+        auto const custom = names.find(controller.id);
+
+        auto* row = group->addCard(glyph::kRename, reported);
+        row->setControl(std::make_unique<TextBox>(
+            custom != names.end() ? custom->second : std::wstring{}, reported,
+            kMaxDeviceNameLength, [this, id = controller.id](std::wstring const& name) {
+                if (!m_context.applySettings) {
+                    return;
+                }
+                Settings next = SettingsStore::instance().get();
+                next.setDeviceName(id, name);
+                if (next.deviceNames != SettingsStore::instance().get().deviceNames) {
+                    m_context.applySettings(std::move(next));
+                }
+            }));
     }
 }
 

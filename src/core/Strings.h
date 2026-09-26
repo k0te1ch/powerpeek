@@ -40,6 +40,8 @@ enum class Text {
     EstimatedRemaining,
     UpdatedJustNow,
     UpdatedMinutesAgo,
+    DeviceNamesHeader,
+    DeviceNamesDescription,
 
     HistoryTitle,
     HistoryEmpty,
