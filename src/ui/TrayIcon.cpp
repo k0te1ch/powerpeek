@@ -3,7 +3,6 @@
 #include <shellapi.h>
 #include <windowsx.h>
 
-#include <algorithm>
 #include <map>
 #include <string>
 
@@ -11,6 +10,7 @@
 #include "core/Strings.h"
 #include "ui/Drawing.h"
 #include "ui/Theme.h"
+#include "ui/TrayText.h"
 
 namespace peek::ui {
 namespace {
@@ -24,20 +24,14 @@ constexpr UINT kIconId = 1;
 constexpr UINT kMenuOpen = 1;
 constexpr UINT kMenuRefresh = 2;
 constexpr UINT kMenuExit = 3;
+// Every device line shares one command: it opens the window, which already lists them all.
+constexpr UINT kMenuDevice = 4;
 
 // Started from Run at logon, this process regularly beats Explorer's notification area to
 // the punch and NIM_ADD fails with ERROR_TIMEOUT. Retrying for a minute covers that and
 // the transient busy-shell case; after that the shell is not coming.
 constexpr UINT kRetryIntervalMs = 2000;
 constexpr int kAddAttempts = 30;
-
-// szTip is WCHAR[128] under version 4 (it was 64 under version 1). The shell truncates
-// without telling anyone, so the text is assembled to fit rather than discovered to be too
-// long; the capacity is the array minus its terminator.
-constexpr std::size_t kTipCapacity = 127;
-
-// The notification-area tooltip breaks lines on CRLF, not on a bare LF.
-constexpr std::wstring_view kLineBreak = L"\r\n";
 
 SIZE requestedIconSize(HWND owner) {
     // The notification area lives on the taskbar, which on a mixed-DPI desktop is not
@@ -148,74 +142,6 @@ bool sameColor(D2D1_COLOR_F const& a, D2D1_COLOR_F const& b) {
     return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
 
-std::wstring describeLevel(DeviceInfo const& controller) {
-    if (controller.percent < 0) {
-        return std::wstring(toString(controller.source));
-    }
-    std::wstring level = std::to_wstring(controller.percent);
-    level += text(Text::UnitPercent);
-    if (controller.fidelity == Fidelity::Coarse) {
-        level += L" (";
-        level += text(Text::ApproximateSuffix);
-        level += L')';
-    }
-    if (controller.charge == ChargeState::Charging || controller.charge == ChargeState::Full) {
-        level += L", ";
-        level += toString(controller.charge);
-    }
-    return level;
-}
-
-std::wstring describeController(DeviceInfo const& controller) {
-    std::wstring line = controller.name;
-    line += L" \x2014 ";
-    line += describeLevel(controller);
-    return line;
-}
-
-// Whole lines only: a name cut in half tells the user less than an honest count of what was
-// left out. Returns false when the line did not fit, which ends the list.
-bool appendLine(std::wstring& tip, std::wstring const& line, std::size_t capacity) {
-    if (tip.size() + kLineBreak.size() + line.size() > capacity) {
-        return false;
-    }
-    tip += kLineBreak;
-    tip += line;
-    return true;
-}
-
-std::wstring omittedNotice(std::size_t omitted) {
-    return formatText(Text::TrayMoreControllers, omitted);
-}
-
-std::wstring buildTooltip(std::vector<DeviceInfo> const& controllers) {
-    std::wstring tip(text(Text::AppName));
-    if (controllers.empty()) {
-        appendLine(tip, std::wstring(text(Text::NoControllers)), kTipCapacity);
-        return tip;
-    }
-
-    std::size_t shown = 0;
-    for (DeviceInfo const& controller : controllers) {
-        // Room for the notice is reserved before the line goes in. Discovering afterwards
-        // that it no longer fits would leave a list that is short without saying so.
-        std::size_t const rest = controllers.size() - shown - 1;
-        std::size_t budget = kTipCapacity;
-        if (rest > 0) {
-            budget -= std::min(budget, kLineBreak.size() + omittedNotice(rest).size());
-        }
-        if (!appendLine(tip, describeController(controller), budget)) {
-            break;
-        }
-        ++shown;
-    }
-
-    if (shown < controllers.size()) {
-        appendLine(tip, omittedNotice(controllers.size() - shown), kTipCapacity);
-    }
-    return tip;
-}
-
 }  // namespace
 
 struct TrayIcon::Impl {
@@ -226,6 +152,9 @@ struct TrayIcon::Impl {
     int attemptsLeft = kAddAttempts;
     UINT_PTR retryTimer = 0;
     std::wstring tip;
+    // The menu is built from these when it opens, so it shows the last poll, not a refresh.
+    std::vector<std::wstring> deviceLines = trayMenuLines({});
+    bool hasDevices = false;
 
     // Everything the bitmap is a function of, so that a poll which changed nothing does
     // not rebuild it. This runs every poll for weeks; a redundant render is a GDI object
@@ -439,6 +368,12 @@ void TrayIcon::Impl::showMenu(POINT screen) {
         return;
     }
 
+    // With nothing connected the single line is a statement, not something to click.
+    UINT const deviceFlags = hasDevices ? MF_STRING : MF_STRING | MF_GRAYED;
+    for (std::wstring const& line : deviceLines) {
+        AppendMenuW(menu, deviceFlags, kMenuDevice, line.c_str());
+    }
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kMenuOpen, std::wstring(text(Text::MenuOpen)).c_str());
     AppendMenuW(menu, MF_STRING, kMenuRefresh, std::wstring(text(Text::MenuRefresh)).c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -461,6 +396,7 @@ void TrayIcon::Impl::showMenu(POINT screen) {
 
     switch (command) {
         case kMenuOpen:
+        case kMenuDevice:
             self->openRequested();
             break;
         case kMenuRefresh:
@@ -484,7 +420,7 @@ TrayIcon::TrayIcon(HWND owner) : m_impl(std::make_unique<Impl>()) {
     m_impl->owner = owner;
     // The icon can be installed before the first poll returns, so it starts out saying that
     // nothing is connected rather than saying nothing at all.
-    m_impl->tip = buildTooltip({});
+    m_impl->tip = buildTrayTooltip({});
 
     // Explorer broadcasts TaskbarCreated at its own integrity level; UIPI drops it on the
     // floor if this process ever runs elevated, and the icon then never comes back after a
@@ -528,9 +464,11 @@ void TrayIcon::reAdd() {
 }
 
 void TrayIcon::update(std::vector<DeviceInfo> const& controllers, Settings const& settings) {
-    std::wstring tip = buildTooltip(controllers);
+    std::wstring tip = buildTrayTooltip(controllers);
     bool const tipChanged = tip != m_impl->tip;
     m_impl->tip = std::move(tip);
+    m_impl->deviceLines = trayMenuLines(controllers);
+    m_impl->hasDevices = !controllers.empty();
 
     // Renders and installs in one step when anything the bitmap depends on moved; that
     // NIM_MODIFY carries the tooltip too, so only an unaccompanied tooltip needs its own.
