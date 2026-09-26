@@ -18,4 +18,8 @@ namespace peek {
 // from the previous custom one, so clearing a name brings the reported one back.
 void applyDeviceNames(std::vector<DeviceInfo>& devices, DeviceNames const& names);
 
+// The same for one reading, for a device held on to after it left the list -- a reminder about
+// a pad that was put away still names it the way the user calls it now.
+void applyDeviceName(DeviceInfo& device, DeviceNames const& names);
+
 }  // namespace peek

@@ -84,6 +84,7 @@ struct App::Impl {
 
     void onControllersChanged();
     void checkReminders();
+    void postReminders(std::vector<DetectedEvent> events, Settings const& settings);
     void onSettingsChanged(Settings const& current, Settings const& previous);
     void onSystemColorsChanged();
     void toggleMainWindow();
@@ -194,10 +195,8 @@ void App::Impl::onControllersChanged() {
                                                       remaining)) {
         notifications->post(event);
     }
-    for (DetectedEvent const& event : reminders.update(snapshot, settings,
-                                                       std::chrono::system_clock::now())) {
-        notifications->post(event);
-    }
+    postReminders(reminders.update(snapshot, settings, std::chrono::system_clock::now()),
+                  settings);
     for (DeviceInfo const& controller : snapshot) {
         history->record(controller);
     }
@@ -208,8 +207,16 @@ void App::Impl::onControllersChanged() {
 }
 
 void App::Impl::checkReminders() {
-    for (DetectedEvent const& event : reminders.update(controllers, SettingsStore::instance().get(),
-                                                       std::chrono::system_clock::now())) {
+    Settings const& settings = SettingsStore::instance().get();
+    postReminders(reminders.update(controllers, settings, std::chrono::system_clock::now()),
+                  settings);
+}
+
+void App::Impl::postReminders(std::vector<DetectedEvent> events, Settings const& settings) {
+    // A charge reminder is about a pad that has left the list, so it carries the reading from
+    // before it went -- and the name it had then. A rename since then has to reach it too.
+    for (DetectedEvent& event : events) {
+        applyDeviceName(event.controller, settings.deviceNames);
         notifications->post(event);
     }
 }

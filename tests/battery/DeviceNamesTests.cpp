@@ -10,6 +10,7 @@
 
 namespace {
 
+using peek::applyDeviceName;
 using peek::applyDeviceNames;
 using peek::DeviceInfo;
 using peek::DeviceNames;
@@ -61,4 +62,18 @@ TEST_CASE("device names: applying again starts from the reported name") {
         applyDeviceNames(devices, {});
         CHECK(devices[0].name == L"Pad");
     }
+}
+
+TEST_CASE("device names: a reading kept from before a rename takes the new name") {
+    // A charge reminder carries the reading of a pad that has since left the list.
+    std::vector<DeviceInfo> devices{makeDevice(L"pad-1", L"Pad")};
+    applyDeviceNames(devices, DeviceNames{{L"pad-1", L"Desk"}});
+    DeviceInfo kept = devices[0];
+
+    applyDeviceName(kept, DeviceNames{{L"pad-1", L"Couch"}});
+    CHECK(kept.name == L"Couch");
+    CHECK(kept.reportedName == L"Pad");
+
+    applyDeviceName(kept, {});
+    CHECK(kept.name == L"Pad");
 }

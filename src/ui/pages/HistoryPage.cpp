@@ -17,6 +17,7 @@
 
 #include "battery/HistoryCsv.h"
 #include "core/Logger.h"
+#include "core/Settings.h"
 #include "core/Strings.h"
 #include "ui/Drawing.h"
 #include "ui/pages/PageWidgets.h"
@@ -256,11 +257,15 @@ void HistoryPage::exportCsv() {
         return;
     }
 
-    // Names are taken from the pads known right now; one not seen this session exports under
-    // its stored id, which is still unique and still readable.
+    // Names are taken from the pads known right now, then from the names the user gave pads
+    // that are not connected; one with neither exports under its stored id, which is still
+    // unique and still readable.
     std::map<std::wstring, std::wstring> names;
     for (DeviceInfo const& controller : *m_context.controllers) {
         names.emplace(controller.id, controller.name);
+    }
+    for (auto const& [id, name] : SettingsStore::instance().get().deviceNames) {
+        names.emplace(id, name);
     }
 
     CsvExport options;
