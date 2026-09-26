@@ -122,6 +122,8 @@ public:
     virtual void onPointerUp(D2D1_POINT_2F, bool insideBounds) { (void)insideBounds; }
     virtual bool onWheel(float delta) { (void)delta; return false; }
     virtual bool onKey(WPARAM key) { (void)key; return false; }
+    // A character typed while this widget has focus, after the keyboard layout has had its say.
+    virtual bool onChar(wchar_t character) { (void)character; return false; }
 
     virtual bool focusable() const { return false; }
     virtual void collectFocusable(std::vector<Widget*>& out);
@@ -146,6 +148,10 @@ public:
 
 protected:
     Widget() = default;
+
+    // Called after the focus state changed, for a widget that has something to finish when
+    // the user moves on.
+    virtual void onFocusChanged(bool focused) { (void)focused; }
 
     void invalidate();
 
@@ -384,6 +390,39 @@ private:
     Animated m_chevron{0.0f};
     Handler m_onChanged;
     std::unique_ptr<ComboPopup> m_popup;
+};
+
+// A single-line text field. Typing appends and Backspace removes the last character; there is
+// no caret movement and no selection, because the one thing it edits is a short name that is
+// quicker to retype than to navigate. Enter or leaving the field commits, and Escape puts back
+// the text the field held when it last committed.
+class TextBox : public Widget {
+public:
+    using Handler = std::function<void(std::wstring const&)>;
+
+    // `placeholder` is shown, dimmed, while the field is empty.
+    TextBox(std::wstring text, std::wstring placeholder, std::size_t maxLength, Handler onCommit);
+
+    std::wstring const& text() const noexcept { return m_text; }
+
+    float measure(float availableWidth) override;
+    void paint(Canvas& canvas) override;
+    bool onKey(WPARAM key) override;
+    bool onChar(wchar_t character) override;
+    bool focusable() const override { return true; }
+    float desiredWidth() const override;
+
+protected:
+    void onFocusChanged(bool focused) override;
+
+private:
+    void commit();
+
+    std::wstring m_text;
+    std::wstring m_committed;
+    std::wstring m_placeholder;
+    std::size_t m_maxLength = 0;
+    Handler m_onCommit;
 };
 
 // One row of a settings page: an optional icon, a title, an optional description, and one

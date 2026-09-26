@@ -41,11 +41,13 @@ bool sameDevices(std::vector<DeviceInfo> const& a, std::vector<DeviceInfo> const
                       [](DeviceInfo const& x, DeviceInfo const& y) { return x.id == y.id; });
 }
 
-// A reading that moved is also a sample the history may have just recorded.
+// A reading that moved is also a sample the history may have just recorded. A renamed device
+// counts as moved too: its card and the history's device list both show the name.
 bool sameReadings(std::vector<DeviceInfo> const& a, std::vector<DeviceInfo> const& b) {
     return std::equal(a.begin(), a.end(), b.begin(), b.end(),
                       [](DeviceInfo const& x, DeviceInfo const& y) {
-                          return x.percent == y.percent && x.charge == y.charge;
+                          return x.percent == y.percent && x.charge == y.charge &&
+                                 x.name == y.name;
                       });
 }
 

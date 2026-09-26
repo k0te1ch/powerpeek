@@ -11,6 +11,7 @@
 #include "battery/ChargeReminder.h"
 #include "battery/ControllerMonitor.h"
 #include "battery/DeviceInfo.h"
+#include "battery/DeviceNames.h"
 #include "battery/EventDetector.h"
 #include "core/AppPaths.h"
 #include "core/Logger.h"
@@ -181,6 +182,7 @@ void App::Impl::connectSignals() {
 void App::Impl::onControllersChanged() {
     std::vector<DeviceInfo> snapshot = monitor->snapshot();
     Settings const& settings = SettingsStore::instance().get();
+    applyDeviceNames(snapshot, settings.deviceNames);
 
     // Announced before anything is drawn: the sound is the part the user notices, and it
     // should not wait behind a window that may not even be visible.
@@ -251,6 +253,11 @@ void App::Impl::onSettingsChanged(Settings const& current, Settings const& previ
         current.criticalThresholdPercent != previous.criticalThresholdPercent ||
         current.lowTimeLeftMinutes != previous.lowTimeLeftMinutes) {
         detector.reset();
+    }
+
+    if (current.deviceNames != previous.deviceNames) {
+        applyDeviceNames(controllers, current.deviceNames);
+        window->setControllers(controllers);
     }
 
     notifications->applySettings(current);
