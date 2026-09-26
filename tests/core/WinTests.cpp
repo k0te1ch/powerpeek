@@ -82,6 +82,9 @@ bool endsWithLoneFullStop(std::wstring_view text) {
 // Whatever FormatMessage supplied, as it survives into the result: everything between the
 // opening bracket at index 11 and the closing one at the end. Empty for a bare code, which
 // is the right answer for a machine holding no message for the id.
+// A temporary would leave the returned view dangling, so refuse one at compile time.
+std::wstring_view bracketedMessage(std::wstring&&) = delete;
+
 std::wstring_view bracketedMessage(std::wstring const& described) {
     if (described.size() < 13u) {
         return {};
@@ -502,7 +505,9 @@ TEST_CASE("win: describeHresult takes the sentence terminator and nothing else")
         CAPTURE(code);
 
         std::wstring const folded = foldBreaks(raw);
-        auto const message = bracketedMessage(describeHresult(hr));
+        // Held in a named string: bracketedMessage returns a view into its argument.
+        std::wstring const described = describeHresult(hr);
+        auto const message = bracketedMessage(described);
         // Characters only ever come off the back, so what is left has to be a prefix of the
         // folded text. Anything else means the message was rebuilt rather than trimmed -- and
         // this is also what pins the fold itself, since a break dropped instead of turned
