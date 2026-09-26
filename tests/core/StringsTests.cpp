@@ -419,7 +419,7 @@ TEST_CASE("strings: format arguments substitute into the english table") {
     // name, a battery level.
     CHECK(formatText(Text::AboutVersion, std::wstring(L"1.4.2")) == L"Version 1.4.2");
     CHECK(formatText(Text::UpdatedMinutesAgo, 7) == L"Updated 7 min ago");
-    CHECK(formatText(Text::TrayMoreControllers, 3) == L"and 3 more");
+    CHECK(formatText(Text::TrayMoreControllers, 3) == L"+3 more");
     CHECK(formatText(Text::EstimatedRemaining, std::wstring(L"2 h 15 min")) ==
           L"About 2 h 15 min left");
     CHECK(formatText(Text::DrainRate, std::wstring(L"4.5")) == L"4.5% per hour");

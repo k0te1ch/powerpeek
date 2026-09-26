@@ -190,7 +190,7 @@ constexpr Entry kTable[] = {
     {Text::MenuOpen, L"Open", L"Открыть"},
     {Text::MenuRefresh, L"Refresh", L"Обновить"},
     {Text::MenuExit, L"Exit", L"Выход"},
-    {Text::TrayMoreControllers, L"and {} more", L"и ещё {}"},
+    {Text::TrayMoreControllers, L"+{} more", L"+ещё {}"},
 
     {Text::ToastConnected, L"{} connected", L"{} подключён"},
     {Text::ToastDisconnected, L"{} disconnected", L"{} отключён"},
