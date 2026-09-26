@@ -22,6 +22,8 @@ struct CsvExport {
 };
 
 // One field as UTF-8, quoted when it holds a comma, a quote or a line break, quotes doubled.
+// A field that opens with = + - @, a tab or a carriage return gets a leading single quote, so a
+// spreadsheet shows it as text instead of evaluating it as a formula.
 std::string csvField(std::wstring_view value);
 
 // "2026-09-26T14:03:00+03:00".

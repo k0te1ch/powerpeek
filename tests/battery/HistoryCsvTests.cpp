@@ -61,6 +61,36 @@ TEST_CASE("csvField quotes a value a reader would otherwise split") {
     CHECK(csvField(L"carriage\rreturn") == "\"carriage\rreturn\"");
 }
 
+TEST_CASE("csvField keeps a value from opening as a spreadsheet formula") {
+    CHECK(csvField(L"=HYPERLINK(\"x\")") == "\"'=HYPERLINK(\"\"x\"\")\"");
+    CHECK(csvField(L"+1") == "'+1");
+    CHECK(csvField(L"-1+2") == "'-1+2");
+    CHECK(csvField(L"@SUM(A1)") == "'@SUM(A1)");
+    CHECK(csvField(L"\tpad") == "'\tpad");
+    CHECK(csvField(L"\rpad") == "\"'\rpad\"");
+    CHECK(csvField(L"=1,2") == "\"'=1,2\"");
+}
+
+TEST_CASE("csvField leaves a formula character alone past the first position") {
+    CHECK(csvField(L"Pad = left") == "Pad = left");
+    CHECK(csvField(L"Pad-2") == "Pad-2");
+    CHECK(csvField(L" =1") == " =1");
+}
+
+TEST_CASE("historyToCsv defuses a device name written as a formula") {
+    CsvExport options = inZone(minutes{0});
+    options.deviceName = [](std::wstring const&) { return std::wstring{L"=cmd|' /C calc'!A0"}; };
+
+    std::vector<HistorySample> const samples{
+        sample(L"pad-1", 50, ChargeState::Discharging, fixedInstant()),
+    };
+
+    CHECK(historyToCsv(samples, options) ==
+          "\xEF\xBB\xBF"
+          "device,timestamp,level_percent,charge_state\r\n"
+          "'=cmd|' /C calc'!A0,2026-09-26T11:03:07+00:00,50,discharging\r\n");
+}
+
 TEST_CASE("csvField writes UTF-8") {
     CHECK(csvField(L"Геймпад") ==
           "\xD0\x93\xD0\xB5\xD0\xB9\xD0\xBC\xD0\xBF\xD0\xB0\xD0\xB4");
