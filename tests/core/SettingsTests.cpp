@@ -60,6 +60,7 @@ void checkSettingsMatch(Settings const& actual, Settings const& expected) {
     CHECK(actual.lowThresholdPercent == expected.lowThresholdPercent);
     CHECK(actual.criticalThresholdPercent == expected.criticalThresholdPercent);
     CHECK(actual.notificationCooldownMinutes == expected.notificationCooldownMinutes);
+    CHECK(actual.lowTimeLeftMinutes == expected.lowTimeLeftMinutes);
     CHECK(actual.theme == expected.theme);
     CHECK(actual.language == expected.language);
     CHECK(actual.trayStyle == expected.trayStyle);
@@ -508,6 +509,15 @@ TEST_CASE("settings: the critical threshold is forced below the low one") {
     }
 }
 
+TEST_CASE("settings: the time-left warning is off by default and clamped") {
+    TempDir dir;
+
+    CHECK(Settings{}.lowTimeLeftMinutes == 0);
+    CHECK(loadDocument(dir, R"json({"lowTimeLeftMinutes": -10})json").lowTimeLeftMinutes == 0);
+    CHECK(loadDocument(dir, R"json({"lowTimeLeftMinutes": 100000})json").lowTimeLeftMinutes ==
+          1440);
+}
+
 TEST_CASE("settings: the notification cooldown is clamped") {
     TempDir dir;
 
@@ -852,6 +862,7 @@ TEST_CASE("settings: save then load round-trips every field") {
     written.lowThresholdPercent = 35;
     written.criticalThresholdPercent = 15;
     written.notificationCooldownMinutes = 5;
+    written.lowTimeLeftMinutes = 25;
     written.theme = ThemePreference::Dark;
     written.language = LanguagePreference::Russian;
     written.trayStyle = TrayStyle::Percentage;

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <chrono>
+#include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,13 +26,22 @@ struct DetectedEvent {
 // toast machinery is what makes those rules checkable.
 class EventDetector {
 public:
+    // How long a pad has left at its current drain, or nothing when that is not known.
+    // Supplied by the caller so that the detector stays free of the history file.
+    using RemainingEstimate =
+        std::function<std::optional<std::chrono::minutes>(DeviceInfo const&)>;
+
     // Returns the events that became true between the previous snapshot and this one.
     // The first call after construction reports nothing at all -- it only records the
     // baseline -- so launching with a flat controller already connected neither shouts
     // about the battery nor announces a connection that happened before startup.
+    //
+    // With an estimate and a nonzero Settings::lowTimeLeftMinutes, a pad whose projected
+    // time left falls below that many minutes is announced as low even above the threshold.
     std::vector<DetectedEvent> update(std::vector<DeviceInfo> const& snapshot,
                                       Settings const& settings,
-                                      std::chrono::system_clock::time_point now);
+                                      std::chrono::system_clock::time_point now,
+                                      RemainingEstimate const& remaining = {});
 
     // Forgets what the threshold rules already reported -- the levels they compare
     // against and the cooldown latches -- so that events the old thresholds swallowed can
@@ -54,6 +65,10 @@ private:
         // Kept across a disconnection, so that reconnecting a pad does not replay the
         // events it already fired: only the presence flag is cleared.
         bool present = false;
+        // Set once the time-left rule has spoken for this discharge. Only charging clears
+        // it: an estimate jitters around the limit far more than a level does, and a margin
+        // would only move the flapping somewhere else.
+        bool timeLeftWarned = false;
         std::map<NotificationEvent, std::chrono::system_clock::time_point> lastNotified;
     };
 

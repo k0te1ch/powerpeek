@@ -149,6 +149,11 @@ struct Settings {
     // Stops a controller hovering on a threshold from re-notifying every poll.
     int notificationCooldownMinutes = 30;
 
+    // Fires the low-battery event when the projected time left drops below this many
+    // minutes, whatever the level. Zero switches it off, which is the default: the
+    // projection needs a stretch of discharge history before it says anything at all.
+    int lowTimeLeftMinutes = 0;
+
     ThemePreference theme = ThemePreference::System;
     LanguagePreference language = LanguagePreference::System;
     TrayStyle trayStyle = TrayStyle::Battery;

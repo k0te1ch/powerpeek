@@ -29,6 +29,7 @@ constexpr int kMaxThresholdPercent = 95;
 // never fires for anyone -- the critical alert reaches every reading first.
 constexpr int kMinLowThresholdPercent = kMinThresholdPercent + 1;
 constexpr int kMaxCooldownMinutes = 24 * 60;
+constexpr int kMaxTimeLeftMinutes = 24 * 60;
 constexpr int kMinRetentionDays = 1;
 constexpr int kMaxRetentionDays = 365;
 
@@ -120,6 +121,7 @@ json::Value toJson(Settings const& settings) {
     root.set("lowThresholdPercent", settings.lowThresholdPercent);
     root.set("criticalThresholdPercent", settings.criticalThresholdPercent);
     root.set("notificationCooldownMinutes", settings.notificationCooldownMinutes);
+    root.set("lowTimeLeftMinutes", settings.lowTimeLeftMinutes);
 
     root.set("theme", enumName(kThemeNames, settings.theme));
     root.set("language", enumName(kLanguageNames, settings.language));
@@ -296,6 +298,9 @@ Settings Settings::load(std::filesystem::path const& file) {
     settings.notificationCooldownMinutes =
         std::clamp(root["notificationCooldownMinutes"].asInt(settings.notificationCooldownMinutes),
                    0, kMaxCooldownMinutes);
+    settings.lowTimeLeftMinutes =
+        std::clamp(root["lowTimeLeftMinutes"].asInt(settings.lowTimeLeftMinutes), 0,
+                   kMaxTimeLeftMinutes);
 
     settings.theme = parseEnum(kThemeNames, root["theme"], settings.theme);
     settings.language = parseEnum(kLanguageNames, root["language"], settings.language);

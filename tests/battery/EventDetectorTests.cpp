@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -88,6 +89,21 @@ void checkEvents(std::vector<DetectedEvent> const& actual,
         CAPTURE(i);
         CHECK(eventName(actual[i].event) == eventName(expected[i]));
     }
+}
+
+// An estimate that reports whatever the case last set, for every pad alike.
+struct FakeEstimate {
+    std::optional<std::chrono::minutes> value;
+
+    EventDetector::RemainingEstimate function() {
+        return [this](DeviceInfo const&) { return value; };
+    }
+};
+
+Settings withTimeLeft(int minutes) {
+    Settings settings{};
+    settings.lowTimeLeftMinutes = minutes;
+    return settings;
 }
 
 }  // namespace
@@ -924,4 +940,99 @@ TEST_CASE("eventDetector: lowering the threshold silences a pad that is now abov
     checkEvents(detector.update({makeController(L"pad-a", 15)}, settings, at(2)), {});
     checkEvents(detector.update({makeController(L"pad-a", 5)}, settings, at(3)),
                 {NotificationEvent::BatteryCritical});
+}
+
+TEST_CASE("eventDetector: a short estimate warns once above the low threshold") {
+    Settings const settings = withTimeLeft(30);
+    FakeEstimate estimate{std::chrono::minutes{120}};
+    EventDetector detector;
+
+    checkEvents(detector.update({makeController(L"pad-a", 60)}, settings, at(0),
+                                estimate.function()), {});
+    checkEvents(detector.update({makeController(L"pad-a", 55)}, settings, at(1),
+                                estimate.function()), {});
+
+    estimate.value = std::chrono::minutes{25};
+    checkEvents(detector.update({makeController(L"pad-a", 50)}, settings, at(2),
+                                estimate.function()),
+                {NotificationEvent::BatteryLow});
+    // The estimate wanders around the limit from poll to poll; long past the cooldown it is
+    // still the same discharge, and still not news.
+    estimate.value = std::chrono::minutes{40};
+    checkEvents(detector.update({makeController(L"pad-a", 48)}, settings, at(100),
+                                estimate.function()), {});
+    estimate.value = std::chrono::minutes{20};
+    checkEvents(detector.update({makeController(L"pad-a", 45)}, settings, at(200),
+                                estimate.function()), {});
+}
+
+TEST_CASE("eventDetector: an estimate exactly on the limit does not warn") {
+    Settings const settings = withTimeLeft(30);
+    FakeEstimate estimate{std::chrono::minutes{30}};
+    EventDetector detector;
+
+    checkEvents(detector.update({makeController(L"pad-a", 60)}, settings, at(0),
+                                estimate.function()), {});
+    checkEvents(detector.update({makeController(L"pad-a", 59)}, settings, at(1),
+                                estimate.function()), {});
+}
+
+TEST_CASE("eventDetector: the time-left warning stays quiet when it cannot or should not speak") {
+    Settings settings = withTimeLeft(30);
+    FakeEstimate estimate{std::chrono::minutes{10}};
+    EventDetector detector;
+
+    checkEvents(detector.update({makeController(L"pad-a", 60)}, settings, at(0)), {});
+
+    SUBCASE("switched off") {
+        settings.lowTimeLeftMinutes = 0;
+        checkEvents(detector.update({makeController(L"pad-a", 59)}, settings, at(1),
+                                    estimate.function()), {});
+    }
+    SUBCASE("no estimate yet") {
+        estimate.value.reset();
+        checkEvents(detector.update({makeController(L"pad-a", 59)}, settings, at(1),
+                                    estimate.function()), {});
+    }
+    SUBCASE("no estimator at all") {
+        checkEvents(detector.update({makeController(L"pad-a", 59)}, settings, at(1)), {});
+    }
+    SUBCASE("charging") {
+        checkEvents(detector.update({makeRawController(L"pad-a", 59, PowerSource::Battery,
+                                                       ChargeState::Charging)},
+                                    settings, at(1), estimate.function()), {});
+    }
+}
+
+TEST_CASE("eventDetector: a pad already warned about by level is not warned again by time") {
+    Settings const settings = withTimeLeft(30);
+    FakeEstimate estimate{std::chrono::minutes{120}};
+    EventDetector detector;
+
+    checkEvents(detector.update({makeController(L"pad-a", 30)}, settings, at(0),
+                                estimate.function()), {});
+    checkEvents(detector.update({makeController(L"pad-a", 19)}, settings, at(1),
+                                estimate.function()),
+                {NotificationEvent::BatteryLow});
+    estimate.value = std::chrono::minutes{10};
+    checkEvents(detector.update({makeController(L"pad-a", 18)}, settings, at(100),
+                                estimate.function()), {});
+}
+
+TEST_CASE("eventDetector: charging re-arms the time-left warning for the next discharge") {
+    Settings const settings = withTimeLeft(30);
+    FakeEstimate estimate{std::chrono::minutes{10}};
+    EventDetector detector;
+
+    checkEvents(detector.update({makeController(L"pad-a", 60)}, settings, at(0),
+                                estimate.function()), {});
+    checkEvents(detector.update({makeController(L"pad-a", 59)}, settings, at(1),
+                                estimate.function()),
+                {NotificationEvent::BatteryLow});
+    checkEvents(detector.update({makeRawController(L"pad-a", 70, PowerSource::Battery,
+                                                   ChargeState::Charging)},
+                                settings, at(60), estimate.function()), {});
+    checkEvents(detector.update({makeController(L"pad-a", 69)}, settings, at(120),
+                                estimate.function()),
+                {NotificationEvent::BatteryLow});
 }

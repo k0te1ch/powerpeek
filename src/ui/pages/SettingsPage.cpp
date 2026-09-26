@@ -28,6 +28,10 @@ constexpr float kLowMinimum = 10.0f;
 constexpr float kLowMaximum = 50.0f;
 constexpr float kCriticalMinimum = 5.0f;
 
+// Up to an hour: past that the projection is too long-range to be worth an interruption.
+constexpr float kTimeLeftStep = 5.0f;
+constexpr float kTimeLeftMaximum = 60.0f;
+
 constexpr double kOpacityStep = 0.05;
 
 // Where the opacity lands the first time a backdrop is chosen. A backdrop behind a fully
@@ -75,6 +79,11 @@ std::wstring percentLabel(float value) {
 }
 
 std::wstring fractionLabel(float value) { return percentLabel(value * 100.0f); }
+
+std::wstring timeLeftLabel(float value) {
+    int const minutes = static_cast<int>(value + 0.5f);
+    return minutes == 0 ? std::wstring(text(Text::LowTimeLeftOff)) : minutesLabel(minutes);
+}
 
 template <class Labeller>
 std::vector<std::wstring> labelsFor(std::span<int const> options, Labeller labeller) {
@@ -229,6 +238,19 @@ void SettingsPage::addThresholds(SettingsGroup& group) {
     criticalSlider->setStep(kThresholdStep);
     criticalSlider->setFormatter(percentLabel);
     m_critical = static_cast<Slider*>(critical->setControl(std::move(criticalSlider)));
+
+    auto* timeLeft = group.addCard(glyph::kBatteryUnknown, std::wstring(text(Text::LowTimeLeft)));
+    timeLeft->setDescription(std::wstring(text(Text::LowTimeLeftDesc)));
+    auto timeLeftSlider = std::make_unique<Slider>(
+        0.0f, kTimeLeftMaximum, static_cast<float>(current.lowTimeLeftMinutes),
+        [this](float value) {
+            Settings next = SettingsStore::instance().get();
+            next.lowTimeLeftMinutes = static_cast<int>(value);
+            m_context.applySettings(std::move(next));
+        });
+    timeLeftSlider->setStep(kTimeLeftStep);
+    timeLeftSlider->setFormatter(timeLeftLabel);
+    timeLeft->setControl(std::move(timeLeftSlider));
 }
 
 void SettingsPage::addAppearance(StackPanel& column) {
