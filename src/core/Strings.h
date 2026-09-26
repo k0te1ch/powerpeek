@@ -113,6 +113,8 @@ enum class Text {
     TrayColorGreen,
     TrayColorBlue,
     TrayColorPink,
+    QuietWhenBusy,
+    QuietWhenBusyDesc,
     ToastPositionLabel,
     ToastPositionDesc,
     ToastPositionTopLeft,

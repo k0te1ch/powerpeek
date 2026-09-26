@@ -7,6 +7,7 @@
 
 #include "core/Settings.h"
 #include "core/Win.h"
+#include "notify/QuietPolicy.h"
 
 namespace peek::platform {
 
@@ -47,6 +48,11 @@ bool backdropRoundsCorners();
 
 bool systemUsesLightTheme();
 D2D1_COLOR_F systemAccentColor();
+
+// What SHQueryUserNotificationState says about the user right now. Anything the call does
+// not report as a reason to hold back -- including a failed call -- reads as Available, so
+// a broken query costs a notification at the wrong moment rather than a lost one.
+notify::UserBusyState userBusyState();
 
 // Restores and activates a window from a message handler. SetForegroundWindow on its own
 // is refused whenever the calling process does not already own the foreground, so this

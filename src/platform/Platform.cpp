@@ -1,6 +1,7 @@
 #include "platform/Platform.h"
 
 #include <dwmapi.h>
+#include <shellapi.h>
 
 #include <winrt/Windows.UI.ViewManagement.h>
 
@@ -382,6 +383,26 @@ bool setAutostartEnabled(bool enabled) {
         return false;
     }
     return true;
+}
+
+notify::UserBusyState userBusyState() {
+    QUERY_USER_NOTIFICATION_STATE state{};
+    if (FAILED(SHQueryUserNotificationState(&state))) {
+        return notify::UserBusyState::Available;
+    }
+    switch (state) {
+        // QUNS_BUSY is a full-screen window that is not Direct3D exclusive, which is how
+        // most games run today; QUNS_RUNNING_D3D_FULL_SCREEN is the exclusive kind.
+        case QUNS_BUSY:
+        case QUNS_RUNNING_D3D_FULL_SCREEN:
+            return notify::UserBusyState::FullScreen;
+        case QUNS_PRESENTATION_MODE:
+            return notify::UserBusyState::Presentation;
+        case QUNS_QUIET_TIME:
+            return notify::UserBusyState::QuietTime;
+        default:
+            return notify::UserBusyState::Available;
+    }
 }
 
 void bringToForeground(HWND window) {

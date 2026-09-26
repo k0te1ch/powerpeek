@@ -135,6 +135,13 @@ constexpr Entry kTable[] = {
     {Text::TrayColorGreen, L"Green", L"Зелёный"},
     {Text::TrayColorBlue, L"Blue", L"Синий"},
     {Text::TrayColorPink, L"Pink", L"Розовый"},
+    {Text::QuietWhenBusy, L"Stay quiet during games and presentations",
+     L"Не беспокоить во время игр и презентаций"},
+    {Text::QuietWhenBusyDesc,
+     L"Holds notifications back while a full-screen app is running or Focus Assist is on. "
+     L"A critical battery still shows a card, without sound.",
+     L"Уведомления не показываются, пока открыто полноэкранное приложение или включена "
+     L"фокусировка внимания. О критическом заряде всё равно появится карточка, но без звука."},
     {Text::ToastPositionLabel, L"Notification position", L"Положение уведомлений"},
     {Text::ToastPositionDesc,
      L"Where this application's own cards appear. Windows places its own notifications "
