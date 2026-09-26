@@ -171,8 +171,12 @@ void App::Impl::onControllersChanged() {
 
     // Announced before anything is drawn: the sound is the part the user notices, and it
     // should not wait behind a window that may not even be visible.
+    auto const remaining = [this](DeviceInfo const& controller) {
+        return history->estimatedRemaining(controller);
+    };
     for (DetectedEvent const& event : detector.update(snapshot, settings,
-                                                      std::chrono::system_clock::now())) {
+                                                      std::chrono::system_clock::now(),
+                                                      remaining)) {
         notifications->post(event);
     }
     for (DeviceInfo const& controller : snapshot) {
@@ -220,7 +224,8 @@ void App::Impl::onSettingsChanged(Settings const& current, Settings const& previ
     // A moved threshold redefines what counts as low, and the detector suppresses an event
     // it believes it has already reported at the old one.
     if (current.lowThresholdPercent != previous.lowThresholdPercent ||
-        current.criticalThresholdPercent != previous.criticalThresholdPercent) {
+        current.criticalThresholdPercent != previous.criticalThresholdPercent ||
+        current.lowTimeLeftMinutes != previous.lowTimeLeftMinutes) {
         detector.reset();
     }
 

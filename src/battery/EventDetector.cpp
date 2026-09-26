@@ -15,12 +15,14 @@ constexpr int kRecoveryMarginPercent = 5;
 
 std::vector<DetectedEvent> EventDetector::update(std::vector<DeviceInfo> const& snapshot,
                                                  Settings const& settings,
-                                                 std::chrono::system_clock::time_point now) {
+                                                 std::chrono::system_clock::time_point now,
+                                                 RemainingEstimate const& remaining) {
     std::vector<DetectedEvent> events;
 
     auto const cooldown = std::chrono::minutes{std::max(0, settings.notificationCooldownMinutes)};
     int const low = std::clamp(settings.lowThresholdPercent, 0, 100);
     int const critical = std::clamp(settings.criticalThresholdPercent, 0, low);
+    auto const timeLeftLimit = std::chrono::minutes{std::max(0, settings.lowTimeLeftMinutes)};
 
     auto fire = [&](NotificationEvent event, DeviceInfo const& controller,
                     ControllerState& state, bool rateLimited) {
@@ -69,6 +71,9 @@ std::vector<DetectedEvent> EventDetector::update(std::vector<DeviceInfo> const& 
             state.lastNotified.erase(NotificationEvent::BatteryLow);
             state.lastNotified.erase(NotificationEvent::BatteryCritical);
         }
+        if (controller.charge == ChargeState::Charging || controller.charge == ChargeState::Full) {
+            state.timeLeftWarned = false;
+        }
 
         if (controller.charge == ChargeState::Full && previous.charge != ChargeState::Full) {
             fire(NotificationEvent::FullyCharged, controller, state, true);
@@ -91,6 +96,18 @@ std::vector<DetectedEvent> EventDetector::update(std::vector<DeviceInfo> const& 
                 fire(NotificationEvent::BatteryCritical, controller, state, true);
             }
         } else if (controller.percent <= low && !wasLow) {
+            fire(NotificationEvent::BatteryLow, controller, state, true);
+        }
+
+        // A pad already past the low threshold has had its warning; a second one for the
+        // same battery would only repeat it with a different reason.
+        if (state.timeLeftWarned || !remaining || timeLeftLimit.count() == 0 ||
+            controller.percent <= low) {
+            continue;
+        }
+        auto const left = remaining(controller);
+        if (left && *left < timeLeftLimit) {
+            state.timeLeftWarned = true;
             fire(NotificationEvent::BatteryLow, controller, state, true);
         }
     }
@@ -124,6 +141,7 @@ void EventDetector::reset() {
     for (auto& [id, state] : m_states) {
         state.thresholdBaseline = -1;
         state.lastNotified.clear();
+        state.timeLeftWarned = false;
     }
 }
 
