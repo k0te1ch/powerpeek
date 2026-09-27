@@ -12,6 +12,7 @@
 #include "notify/SystemToast.h"
 #include "notify/ToastWindow.h"
 #include "platform/Platform.h"
+#include "ui/DeviceGrid.h"
 #include "ui/Theme.h"
 
 // The resources directory is not on the include path -- only src is -- and the built-in
@@ -62,13 +63,13 @@ struct Appearance {
     D2D1_COLOR_F color;
 };
 
-Appearance appearanceFor(NotificationEvent event) {
+Appearance appearanceFor(NotificationEvent event, DeviceKind kind) {
     ui::Palette const& colors = ui::theme().colors();
     switch (event) {
         case NotificationEvent::Connected:
-            return {ui::glyph::kGamepad, colors.accent};
+            return {std::wstring(ui::kindGlyph(kind)), colors.accent};
         case NotificationEvent::Disconnected:
-            return {ui::glyph::kGamepad, colors.textSecondary};
+            return {std::wstring(ui::kindGlyph(kind)), colors.textSecondary};
         case NotificationEvent::BatteryLow:
             return {ui::glyph::kWarning, colors.caution};
         case NotificationEvent::BatteryCritical:
@@ -97,7 +98,7 @@ ToastContent makeContent(NotificationEvent event, DeviceInfo const& controller) 
     content.title = makeTitle(event, controller);
     content.body = makeBody(controller);
 
-    Appearance const appearance = appearanceFor(event);
+    Appearance const appearance = appearanceFor(event, controller.kind);
     content.glyph = appearance.glyph;
     content.badge = appearance.color;
 
