@@ -290,15 +290,20 @@ ControllersPage::ControllersPage(PageContext context) : Page(std::move(context))
 
 void ControllersPage::build(StackPanel& column) {
     m_cards.clear();
+    m_refresh = nullptr;
 
     auto header = std::make_unique<PageHeader>(std::wstring(text(Text::DevicesTitle)));
-    auto refresh = std::make_unique<Button>(std::wstring(text(Text::Refresh)),
-                                            [this] {
-                                                if (m_context.refreshControllers) {
-                                                    m_context.refreshControllers();
-                                                }
-                                            });
+    auto refresh = std::make_unique<Button>(std::wstring(text(Text::Refresh)), [this] {
+        if (!m_context.refreshControllers) {
+            return;
+        }
+        // The monitor always answers a refresh, and refreshValues or a rebuild of this page
+        // is what that answer arrives as; either one brings the button back.
+        m_refresh->setEnabled(false);
+        m_context.refreshControllers();
+    });
     refresh->setGlyph(glyph::kRefresh);
+    m_refresh = refresh.get();
     header->setAction(std::move(refresh));
     column.add(std::move(header));
 
@@ -343,6 +348,9 @@ void ControllersPage::buildNames(StackPanel& column) {
 }
 
 void ControllersPage::refreshValues() {
+    if (m_refresh != nullptr) {
+        m_refresh->setEnabled(true);
+    }
     auto const& controllers = *m_context.controllers;
     for (auto* card : m_cards) {
         auto const found = std::find_if(

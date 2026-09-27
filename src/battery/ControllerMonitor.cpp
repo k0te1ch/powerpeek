@@ -10,6 +10,7 @@
 
 #include "battery/DeviceMerge.h"
 #include "battery/PnpBatteryProvider.h"
+#include "battery/SnapshotPolicy.h"
 #include "battery/WinRtBatteryProvider.h"
 #include "battery/XInputBatteryProvider.h"
 #include "core/Logger.h"
@@ -40,17 +41,6 @@ constexpr std::chrono::seconds kIdleInterval = 30s;
 // the cost forty times over for the same number. The last sweep is reused in between.
 constexpr std::chrono::seconds kDeviceTreeInterval = 30s;
 
-bool sameReading(DeviceInfo const& a, DeviceInfo const& b) noexcept {
-    return a.id == b.id && a.name == b.name && a.percent == b.percent &&
-           a.fidelity == b.fidelity && a.source == b.source && a.charge == b.charge;
-}
-
-// lastUpdate moves on every poll and would make every poll look like a change, so the
-// comparison covers only what the UI actually renders.
-bool sameList(std::vector<DeviceInfo> const& a, std::vector<DeviceInfo> const& b) noexcept {
-    return std::equal(a.begin(), a.end(), b.begin(), b.end(), sameReading);
-}
-
 }  // namespace
 
 struct ControllerMonitor::Impl {
@@ -71,24 +61,24 @@ struct ControllerMonitor::Impl {
     std::vector<DeviceInfo> latest;
 
     void run();
-    void publish(std::vector<DeviceInfo> list);
+    void publish(std::vector<DeviceInfo> list, bool requested);
 
     void signal() {
         wake.notify_all();
     }
 };
 
-void ControllerMonitor::Impl::publish(std::vector<DeviceInfo> list) {
-    bool changed = false;
+void ControllerMonitor::Impl::publish(std::vector<DeviceInfo> list, bool requested) {
+    bool publishing = false;
     {
         std::scoped_lock lock{snapshotMutex};
-        changed = !sameList(latest, list);
-        if (changed) {
+        publishing = shouldPublish(latest, list, requested);
+        if (publishing) {
             latest = std::move(list);
         }
     }
 
-    if (!changed || notifyWindow == nullptr) {
+    if (!publishing || notifyWindow == nullptr) {
         return;
     }
     if (!PostMessageW(notifyWindow, changedMessage, 0, 0)) {
@@ -127,6 +117,8 @@ void ControllerMonitor::Impl::run() {
         std::map<std::wstring, std::chrono::system_clock::time_point> firstSeen;
         auto const startedAt = std::chrono::steady_clock::now();
         std::size_t rampStep = 0;
+        // Set by a refresh the loop woke up for, and spent by the poll that answers it.
+        bool refreshing = false;
 
         for (;;) {
             std::chrono::seconds pollInterval{};
@@ -153,7 +145,8 @@ void ControllerMonitor::Impl::run() {
             // keyboards. They arrive after the pads and before the XInput fallback, and that
             // order is the source priority: readings that rank equal keep the earlier source.
             auto const sweptAgo = std::chrono::steady_clock::now();
-            if (!pnpSweptAt || sweptAgo - *pnpSweptAt >= kDeviceTreeInterval || devicesArrived) {
+            if (!pnpSweptAt || sweptAgo - *pnpSweptAt >= kDeviceTreeInterval || devicesArrived ||
+                refreshing) {
                 pnpDevices = pnpProvider.poll();
                 pnpSweptAt = sweptAgo;
             }
@@ -204,7 +197,8 @@ void ControllerMonitor::Impl::run() {
             });
 
             bool const empty = list.empty();
-            publish(std::move(list));
+            publish(std::move(list), refreshing);
+            refreshing = false;
 
             std::chrono::seconds delay = empty ? std::max(pollInterval, kIdleInterval)
                                                : pollInterval;
@@ -222,6 +216,7 @@ void ControllerMonitor::Impl::run() {
             }
             if (refreshRequested) {
                 refreshRequested = false;
+                refreshing = true;
                 lock.unlock();
                 xinputProvider.invalidatePresence();
             }

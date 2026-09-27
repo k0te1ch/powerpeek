@@ -321,10 +321,17 @@ void MainWindow::setControllers(std::vector<DeviceInfo> controllers) {
     bool const shapeHeld = sameDevices(m_impl->controllers, controllers);
     bool const levelsHeld = shapeHeld && sameReadings(m_impl->controllers, controllers);
     m_impl->controllers = std::move(controllers);
-    if (!m_impl->shell || levelsHeld) {
+    if (!m_impl->shell) {
         return;
     }
 
+    if (levelsHeld) {
+        // Nothing moved but the time of the reading -- the answer to a manual refresh. The
+        // cards restate "updated just now"; the history has no new sample to show.
+        m_impl->pages[0]->refreshValues();
+        invalidate();
+        return;
+    }
     if (shapeHeld) {
         // The cards stay; their gauges sweep to the new levels.
         m_impl->pages[0]->refreshValues();

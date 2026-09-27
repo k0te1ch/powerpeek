@@ -140,6 +140,7 @@ set(PP_CORE_SOURCES
     battery/ChargeReminder.cpp
     battery/DeviceNames.cpp
     battery/PnpMapping.cpp
+    battery/SnapshotPolicy.cpp
     battery/EventDetector.cpp
     battery/HistoryCsv.cpp
     audio/WavReader.cpp
