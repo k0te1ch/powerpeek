@@ -52,6 +52,10 @@ std::vector<TileColumn> tileColumns(float availableWidth, float scale) {
     return columns;
 }
 
+float nameSlotHeight(float nameHeight, float editorHeight) noexcept {
+    return std::max({0.0f, nameHeight, editorHeight});
+}
+
 TileAlert tileAlert(DeviceInfo const& device, int lowThreshold, int criticalThreshold) {
     if (!device.hasBattery() || device.charge == ChargeState::Charging ||
         device.charge == ChargeState::Full) {

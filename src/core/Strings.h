@@ -41,8 +41,6 @@ enum class Text {
     EstimatedRemaining,
     UpdatedJustNow,
     UpdatedMinutesAgo,
-    DeviceNamesHeader,
-    DeviceNamesDescription,
     GroupGamepads,
     GroupHeadsets,
     GroupMice,

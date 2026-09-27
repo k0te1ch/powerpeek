@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,6 +35,9 @@ constexpr float kApproximateIndent = 18.0f;
 constexpr float kApproximateGlyphSize = 12.0f;
 constexpr float kSectionTopMargin = 12.0f;
 constexpr float kSectionBottomMargin = 4.0f;
+constexpr float kRenameButtonSize = 28.0f;
+constexpr float kRenameGlyphSize = 14.0f;
+constexpr float kRenameGap = 4.0f;
 constexpr std::uint16_t kVendorMicrosoft = 0x045E;
 
 // Microsoft ships a separate product id per transport, and that is the only signal either
@@ -134,12 +138,108 @@ Text sectionTitle(DeviceKind kind) {
 
 }  // namespace
 
+namespace {
+
+// The pencil on a tile. It takes no room of its own in the text column's flow -- the name
+// always leaves space for it -- and it is drawn only while the pointer is over the tile or the
+// button has keyboard focus, so a grid at rest is not a grid of pencils. It stays in the Tab
+// order throughout, which is what keeps renaming reachable without a mouse.
+class RenameButton : public Widget {
+public:
+    explicit RenameButton(std::function<void()> onClick) : m_onClick(std::move(onClick)) {}
+
+    // 0 hidden, 1 fully drawn; the tile animates it with the pointer.
+    void setReveal(float reveal) noexcept { m_reveal = reveal; }
+
+    float measure(float) override { return kRenameButtonSize; }
+    bool focusable() const override { return true; }
+
+    void paint(Canvas& canvas) override {
+        float const shown = focused() ? 1.0f : std::max(m_reveal, m_hoverFade.value());
+        if (shown <= 0.0f) {
+            return;
+        }
+        auto const& palette = theme().colors();
+        D2D1_COLOR_F fill = palette.controlFillSecondary;
+        fill.a *= std::max(m_hoverFade.value(), m_pressFade.value()) * shown;
+        fillRounded(canvas, m_bounds, Metrics::controlCornerRadius, fill);
+
+        D2D1_COLOR_F glyphColor = palette.textSecondary;
+        glyphColor.a *= shown;
+        drawIcon(canvas, glyph::kEdit, kRenameGlyphSize, m_bounds, glyphColor);
+
+        if (focused() && host() && host()->focusVisible()) {
+            drawFocusRing(canvas, m_bounds, Metrics::controlCornerRadius);
+        }
+    }
+
+    void onPointerUp(D2D1_POINT_2F, bool insideBounds) override {
+        if (insideBounds && m_onClick) {
+            m_onClick();
+        }
+    }
+
+    bool onKey(WPARAM key) override {
+        if (key != VK_RETURN && key != VK_SPACE) {
+            return false;
+        }
+        if (m_onClick) {
+            m_onClick();
+        }
+        return true;
+    }
+
+private:
+    std::function<void()> m_onClick;
+    float m_reveal = 0.0f;
+};
+
+// The field a tile's name turns into. TextBox already commits on Enter and on losing focus and
+// reverts on Escape; this adds the one thing the tile needs to know, which is that editing is
+// over, and whether the keyboard ended it (and so wants focus back on the pencil).
+class NameEditor : public TextBox {
+public:
+    using Done = std::function<void(bool byKeyboard)>;
+
+    NameEditor(std::wstring text, std::wstring placeholder, Handler onCommit, Done onDone)
+        : TextBox(std::move(text), std::move(placeholder), kMaxDeviceNameLength,
+                  std::move(onCommit)),
+          m_onDone(std::move(onDone)) {}
+
+    bool onKey(WPARAM key) override {
+        bool const handled = TextBox::onKey(key);
+        if ((key == VK_RETURN || key == VK_ESCAPE) && m_onDone) {
+            m_onDone(true);
+        }
+        return handled;
+    }
+
+protected:
+    void onFocusChanged(bool focused) override {
+        TextBox::onFocusChanged(focused);
+        if (!focused && m_onDone) {
+            m_onDone(false);
+        }
+    }
+
+private:
+    Done m_onDone;
+};
+
+}  // namespace
+
 // One device: what it is, the level on a ring that sweeps to it rather than jumping, and the
 // few lines of text that say how it is doing. A level at or below a warning threshold on its
 // way down tints the edge of the tile, so the one that needs a charger stands out of the grid.
-class DeviceTile : public Widget {
+//
+// The name line doubles as the rename field. Its slot is always as tall as the field, so
+// switching between the two moves nothing else on the tile or in the grid.
+class DeviceTile : public Container {
 public:
-    DeviceTile(DeviceInfo const& info, std::optional<std::chrono::minutes> remaining) {
+    using Rename = std::function<void(std::wstring const&)>;
+
+    DeviceTile(DeviceInfo const& info, std::optional<std::chrono::minutes> remaining,
+               std::wstring customName, Rename onRename) {
         m_name.setStyle(TypeStyle::BodyStrong);
         m_name.setWrapping(true);
         m_status.setStyle(TypeStyle::Caption);
@@ -148,6 +248,14 @@ public:
         m_remaining.setStyle(TypeStyle::Caption);
         m_remaining.setWrapping(true);
         m_updated.setStyle(TypeStyle::Caption);
+
+        std::wstring reported = info.reportedName.empty() ? info.name : info.reportedName;
+        m_editor = emplace<NameEditor>(std::move(customName), std::move(reported),
+                                       std::move(onRename),
+                                       [this](bool byKeyboard) { stopEditing(byKeyboard); });
+        m_editor->setVisible(false);
+        m_pencil = emplace<RenameButton>([this] { startEditing(); });
+
         apply(info, remaining);
         m_fill.snapTo(fraction(info));
     }
@@ -162,23 +270,62 @@ public:
     }
 
     float measure(float availableWidth) override {
-        float const textWidth = std::max(40.0f, availableWidth - kTilePadding * 2.0f);
-        float height = kTilePadding + kTopRowHeight + kTopRowGap;
-        height += m_name.measure(textWidth);
-        height += kLineGap + m_status.measure(textWidth);
+        m_textWidth = std::max(40.0f, availableWidth - kTilePadding * 2.0f);
+        float const nameWidth = std::max(20.0f, m_textWidth - kRenameButtonSize - kRenameGap);
+        m_nameSlot = nameSlotHeight(m_name.measure(nameWidth), Metrics::controlHeight);
+
+        float height = kTilePadding + kTopRowHeight + kTopRowGap + m_nameSlot;
+        height += kLineGap + m_status.measure(m_textWidth);
         if (!m_approximate.empty()) {
-            height += kLineGap + m_approximate.measure(textWidth - kApproximateIndent);
+            height += kLineGap + m_approximate.measure(m_textWidth - kApproximateIndent);
         }
         if (!m_remaining.empty()) {
-            height += kLineGap + m_remaining.measure(textWidth);
+            height += kLineGap + m_remaining.measure(m_textWidth);
         }
-        height += kLineGap + m_updated.measure(textWidth);
+        height += kLineGap + m_updated.measure(m_textWidth);
         return height + kTilePadding;
     }
 
+    void arrange(D2D1_RECT_F bounds) override {
+        Widget::arrange(bounds);
+        float const left = bounds.left + kTilePadding;
+        float const right = left + m_textWidth;
+        float const slotTop = nameSlotTop();
+
+        float const editorTop = slotTop + (m_nameSlot - Metrics::controlHeight) * 0.5f;
+        m_editor->arrange(
+            D2D1::RectF(left, editorTop, right, editorTop + Metrics::controlHeight));
+
+        float const pencilTop = slotTop + (m_nameSlot - kRenameButtonSize) * 0.5f;
+        m_pencil->arrange(D2D1::RectF(right - kRenameButtonSize, pencilTop, right,
+                                      pencilTop + kRenameButtonSize));
+    }
+
+    // The tile itself is a target, not only its pencil: the pointer anywhere on it is what
+    // reveals the pencil, and a click on it is a click away from an open name field.
+    Widget* hitTest(D2D1_POINT_2F point) override {
+        if (Widget* child = Container::hitTest(point)) {
+            return child;
+        }
+        bool const inside = point.x >= m_bounds.left && point.x < m_bounds.right &&
+                            point.y >= m_bounds.top && point.y < m_bounds.bottom;
+        return visible() && inside ? this : nullptr;
+    }
+
+    void onPointerEnter() override {
+        m_reveal.animateTo(1.0f, kDurationFast, Easing::Entrance);
+        invalidate();
+    }
+
+    void onPointerLeave() override {
+        m_reveal.animateTo(0.0f, kDurationFast, Easing::Entrance);
+        invalidate();
+    }
+
     bool tick(std::chrono::steady_clock::time_point now) override {
-        bool running = Widget::tick(now);
+        bool running = Container::tick(now);
         running |= m_fill.tick(now);
+        running |= m_reveal.tick(now);
         return running;
     }
 
@@ -212,12 +359,18 @@ public:
                                   rowCentre + kRingSize * 0.5f),
                       gauge(), theme().textFormat(TypeStyle::BodyStrong));
 
-        float y = top + kTopRowHeight + kTopRowGap;
+        float const slotTop = nameSlotTop();
+        if (!m_editing) {
+            m_name.draw(canvas,
+                        D2D1::Point2F(left, slotTop + (m_nameSlot - m_name.size().height) * 0.5f),
+                        palette.textPrimary);
+        }
+
+        float y = slotTop + m_nameSlot + kLineGap;
         auto line = [&](TextBlock& block, D2D1_COLOR_F color) {
             block.draw(canvas, D2D1::Point2F(left, y), color);
             y += block.size().height + kLineGap;
         };
-        line(m_name, palette.textPrimary);
         line(m_status, palette.textSecondary);
         if (!m_approximate.empty()) {
             // XInput only reports four buckets; saying so with a warning glyph is the whole
@@ -234,9 +387,42 @@ public:
             line(m_remaining, m_alert == TileAlert::None ? palette.textSecondary : alertColor());
         }
         line(m_updated, palette.textTertiary);
+
+        m_pencil->setReveal(m_reveal.value());
+        Container::paint(canvas);
     }
 
 private:
+    float nameSlotTop() const noexcept {
+        return m_bounds.top + kTilePadding + kTopRowHeight + kTopRowGap;
+    }
+
+    void startEditing() {
+        if (m_editing || host() == nullptr) {
+            return;
+        }
+        m_editing = true;
+        m_pencil->setVisible(false);
+        m_editor->setVisible(true);
+        host()->setFocus(m_editor);
+        invalidate();
+    }
+
+    // Reached twice when the keyboard ends the edit -- once for the key, once for the focus
+    // the key moves back to the pencil -- and only the first one does anything.
+    void stopEditing(bool byKeyboard) {
+        if (!m_editing) {
+            return;
+        }
+        m_editing = false;
+        m_editor->setVisible(false);
+        m_pencil->setVisible(true);
+        if (byKeyboard && host() != nullptr) {
+            host()->setFocus(m_pencil);
+        }
+        invalidate();
+    }
+
     static float fraction(DeviceInfo const& info) {
         return info.percent < 0 ? 0.0f : static_cast<float>(info.percent) / 100.0f;
     }
@@ -332,13 +518,19 @@ private:
     TextBlock m_approximate;
     TextBlock m_remaining;
     TextBlock m_updated;
+    NameEditor* m_editor = nullptr;
+    RenameButton* m_pencil = nullptr;
     Animated m_fill{0.0f};
+    Animated m_reveal{0.0f};
     DeviceKind m_kind = DeviceKind::Other;
     ControllerLink m_link = ControllerLink::None;
     TileAlert m_alert = TileAlert::None;
+    float m_textWidth = 0.0f;
+    float m_nameSlot = 0.0f;
     int m_percent = -1;
     bool m_charging = false;
     bool m_coarse = false;
+    bool m_editing = false;
 };
 
 namespace {
@@ -424,6 +616,7 @@ void DevicesPage::build(StackPanel& column) {
         return;
     }
 
+    DeviceNames const& names = SettingsStore::instance().get().deviceNames;
     bool first = true;
     for (DeviceGroup const& group : groupByKind(devices)) {
         auto* title = column.emplace<Label>(std::wstring(text(sectionTitle(group.kind))),
@@ -434,36 +627,26 @@ void DevicesPage::build(StackPanel& column) {
         auto* grid = column.emplace<TileGrid>();
         for (std::size_t const index : group.members) {
             DeviceInfo const& device = devices[index];
-            m_tiles.push_back(grid->emplace<DeviceTile>(device, remainingFor(device)));
+            auto const custom = names.find(device.id);
+            m_tiles.push_back(grid->emplace<DeviceTile>(
+                device, remainingFor(device),
+                custom != names.end() ? custom->second : std::wstring{},
+                [this, id = device.id](std::wstring const& name) { rename(id, name); }));
         }
     }
-    buildNames(column);
 }
 
-// One row per device, titled with the name its provider reports so that a renamed device can
-// still be told apart from its twin. The field holds only the custom name: empty means none.
-void DevicesPage::buildNames(StackPanel& column) {
-    auto* group = column.emplace<SettingsGroup>(std::wstring(text(Text::DeviceNamesHeader)),
-                                                std::wstring(text(Text::DeviceNamesDescription)));
-    DeviceNames const& names = SettingsStore::instance().get().deviceNames;
-    for (auto const& device : *m_context.controllers) {
-        std::wstring const& reported =
-            device.reportedName.empty() ? device.name : device.reportedName;
-        auto const custom = names.find(device.id);
-
-        auto* row = group->addCard(glyph::kRename, reported);
-        row->setControl(std::make_unique<TextBox>(
-            custom != names.end() ? custom->second : std::wstring{}, reported,
-            kMaxDeviceNameLength, [this, id = device.id](std::wstring const& name) {
-                if (!m_context.applySettings) {
-                    return;
-                }
-                Settings next = SettingsStore::instance().get();
-                next.setDeviceName(id, name);
-                if (next.deviceNames != SettingsStore::instance().get().deviceNames) {
-                    m_context.applySettings(std::move(next));
-                }
-            }));
+// The field holds only the custom name, so an empty one means "go back to what the device
+// calls itself". The page is not rebuilt for it -- MainWindow holds rebuilds back while the
+// settings it applies are its own -- so the tile that is committing survives its own commit.
+void DevicesPage::rename(std::wstring const& id, std::wstring const& name) {
+    if (!m_context.applySettings) {
+        return;
+    }
+    Settings next = SettingsStore::instance().get();
+    next.setDeviceName(id, name);
+    if (next.deviceNames != SettingsStore::instance().get().deviceNames) {
+        m_context.applySettings(std::move(next));
     }
 }
 

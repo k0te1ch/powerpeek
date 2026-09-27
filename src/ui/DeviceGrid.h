@@ -49,6 +49,10 @@ struct TileColumn {
 // pixels, and tile widths differ by one pixel at most. A scale of zero or less counts as 1.
 std::vector<TileColumn> tileColumns(float availableWidth, float scale);
 
+// Height of the slot a tile keeps for its name. The name turns into a text field when it
+// is renamed, and the slot is the taller of the two, so the switch moves nothing.
+float nameSlotHeight(float nameHeight, float editorHeight) noexcept;
+
 enum class TileAlert { None, Low, Critical };
 
 // Whether a tile carries the low or the critical accent. Only a level on its way down counts:

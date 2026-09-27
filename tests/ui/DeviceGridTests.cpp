@@ -28,6 +28,7 @@ using peek::ui::groupByKind;
 using peek::ui::kindGlyph;
 using peek::ui::kTileGap;
 using peek::ui::kTileMinWidth;
+using peek::ui::nameSlotHeight;
 using peek::ui::TileAlert;
 using peek::ui::tileAlert;
 using peek::ui::TileColumn;
@@ -258,4 +259,14 @@ TEST_CASE("deviceGrid: every kind has a glyph of its own") {
         glyphs.emplace(glyph);
     }
     CHECK(glyphs.size() == peek::ui::kKindOrder.size());
+}
+
+TEST_CASE("deviceGrid: the name slot is the same height reading and editing") {
+    // A one-line name is shorter than the field it turns into; the slot takes the field's
+    // height either way, so opening the field does not push the rest of the tile down.
+    CHECK(nameSlotHeight(20.0f, 32.0f) == 32.0f);
+    // A name that wraps to two lines is taller than the field, and the slot keeps its height.
+    CHECK(nameSlotHeight(40.0f, 32.0f) == 40.0f);
+    CHECK(nameSlotHeight(0.0f, 32.0f) == 32.0f);
+    CHECK(nameSlotHeight(-5.0f, -5.0f) == 0.0f);
 }
