@@ -10,7 +10,7 @@
 #include "ui/Drawing.h"
 #include "ui/Widgets.h"
 #include "ui/pages/AboutPage.h"
-#include "ui/pages/ControllersPage.h"
+#include "ui/pages/DevicesPage.h"
 #include "ui/pages/HistoryPage.h"
 #include "ui/pages/SettingsPage.h"
 #include "ui/pages/SoundsPage.h"
@@ -259,7 +259,7 @@ void MainWindow::buildShell() {
     };
 
     std::vector<NavigationRail::Item> items{
-        {std::wstring(glyph::kGamepad), std::wstring(text(Text::NavDevices))},
+        {std::wstring(glyph::kDevices), std::wstring(text(Text::NavDevices))},
         {std::wstring(glyph::kChart), std::wstring(text(Text::NavHistory))},
         {std::wstring(glyph::kVolume), std::wstring(text(Text::NavSounds))},
         {std::wstring(glyph::kSettings), std::wstring(text(Text::NavSettings))},
@@ -283,7 +283,7 @@ void MainWindow::buildShell() {
         });
 
     PageSlot& slot = shell->slot();
-    m_impl->pages[0] = slot.emplace<ControllersPage>(context);
+    m_impl->pages[0] = slot.emplace<DevicesPage>(context);
     m_impl->pages[1] = slot.emplace<HistoryPage>(context);
     m_impl->pages[2] = slot.emplace<SoundsPage>(context);
     m_impl->pages[3] = slot.emplace<SettingsPage>(context);

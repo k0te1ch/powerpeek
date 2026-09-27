@@ -1,32 +1,39 @@
-#include "ui/pages/ControllersPage.h"
+#include "ui/pages/DevicesPage.h"
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "core/Settings.h"
 #include "core/Strings.h"
+#include "ui/DeviceGrid.h"
 #include "ui/Drawing.h"
 #include "ui/pages/PageWidgets.h"
 
 namespace peek::ui {
 namespace {
 
-constexpr float kCardPadding = 16.0f;
-constexpr float kGaugeSize = 80.0f;
-constexpr float kGaugeTextGap = 20.0f;
-constexpr float kArtHeight = 68.0f;
-constexpr float kArtGap = 16.0f;
-// Narrower than this and the portrait is costing the name and the status more room than it
-// earns, so the card drops it and goes back to a gauge and two lines of text.
-constexpr float kMinimumTextWidth = 150.0f;
+constexpr float kTilePadding = 16.0f;
+constexpr float kTopRowHeight = 60.0f;
+constexpr float kRingSize = 60.0f;
+constexpr float kArtHeight = 52.0f;
+constexpr float kBadgeSize = 52.0f;
+constexpr float kBadgeRadius = 8.0f;
+constexpr float kBadgeGlyphSize = 26.0f;
+constexpr float kTopRowGap = 12.0f;
 constexpr float kLineGap = 2.0f;
+constexpr float kAlertBarWidth = 3.0f;
+constexpr float kAlertStrokeWidth = 1.5f;
 constexpr float kApproximateIndent = 18.0f;
 constexpr float kApproximateGlyphSize = 12.0f;
+constexpr float kSectionTopMargin = 12.0f;
+constexpr float kSectionBottomMargin = 4.0f;
 constexpr std::uint16_t kVendorMicrosoft = 0x045E;
 
 // Microsoft ships a separate product id per transport, and that is the only signal either
@@ -80,6 +87,11 @@ std::wstring_view chargeText(DeviceInfo const& info) {
     if (info.charge == ChargeState::Unknown && info.source == PowerSource::Wired) {
         return text(Text::StatusWired);
     }
+    // The device tree reports a level and nothing about where it is heading. "Unknown" would
+    // read as though the level were in doubt; what is actually known is that it is there.
+    if (info.charge == ChargeState::Unknown && info.hasBattery()) {
+        return text(Text::StatusConnected);
+    }
     return toString(info.charge);
 }
 
@@ -102,17 +114,39 @@ std::wstring updatedLine(DeviceInfo const& info) {
     return formatText(Text::UpdatedMinutesAgo, minutes);
 }
 
+Text sectionTitle(DeviceKind kind) {
+    switch (kind) {
+        case DeviceKind::Gamepad:
+            return Text::GroupGamepads;
+        case DeviceKind::Headset:
+            return Text::GroupHeadsets;
+        case DeviceKind::Mouse:
+            return Text::GroupMice;
+        case DeviceKind::Keyboard:
+            return Text::GroupKeyboards;
+        case DeviceKind::Pen:
+            return Text::GroupPens;
+        case DeviceKind::Other:
+            break;
+    }
+    return Text::GroupOther;
+}
+
 }  // namespace
 
-// One controller, drawn as a Fluent card with a ring gauge that sweeps to the level rather
-// than jumping to it.
-class ControllerCard : public Widget {
+// One device: what it is, the level on a ring that sweeps to it rather than jumping, and the
+// few lines of text that say how it is doing. A level at or below a warning threshold on its
+// way down tints the edge of the tile, so the one that needs a charger stands out of the grid.
+class DeviceTile : public Widget {
 public:
-    ControllerCard(DeviceInfo const& info, std::optional<std::chrono::minutes> remaining) {
+    DeviceTile(DeviceInfo const& info, std::optional<std::chrono::minutes> remaining) {
         m_name.setStyle(TypeStyle::BodyStrong);
-        m_status.setStyle(TypeStyle::Body);
+        m_name.setWrapping(true);
+        m_status.setStyle(TypeStyle::Caption);
+        m_status.setWrapping(true);
         m_approximate.setStyle(TypeStyle::Caption);
         m_remaining.setStyle(TypeStyle::Caption);
+        m_remaining.setWrapping(true);
         m_updated.setStyle(TypeStyle::Caption);
         apply(info, remaining);
         m_fill.snapTo(fraction(info));
@@ -128,18 +162,18 @@ public:
     }
 
     float measure(float availableWidth) override {
-        m_showArt = textColumnWidth(availableWidth, true) >= kMinimumTextWidth;
-        float const textWidth = std::max(80.0f, textColumnWidth(availableWidth, m_showArt));
-        float lines = m_name.measure(textWidth) + kLineGap + m_status.measure(textWidth);
+        float const textWidth = std::max(40.0f, availableWidth - kTilePadding * 2.0f);
+        float height = kTilePadding + kTopRowHeight + kTopRowGap;
+        height += m_name.measure(textWidth);
+        height += kLineGap + m_status.measure(textWidth);
         if (!m_approximate.empty()) {
-            lines += kLineGap + m_approximate.measure(textWidth - kApproximateIndent);
+            height += kLineGap + m_approximate.measure(textWidth - kApproximateIndent);
         }
         if (!m_remaining.empty()) {
-            lines += kLineGap + m_remaining.measure(textWidth);
+            height += kLineGap + m_remaining.measure(textWidth);
         }
-        lines += kLineGap + m_updated.measure(textWidth);
-        static_assert(kArtHeight <= kGaugeSize, "the gauge sets the card's minimum height");
-        return std::max(kGaugeSize + kCardPadding * 2.0f, lines + kCardPadding * 2.0f);
+        height += kLineGap + m_updated.measure(textWidth);
+        return height + kTilePadding;
     }
 
     bool tick(std::chrono::steady_clock::time_point now) override {
@@ -151,34 +185,34 @@ public:
     void paint(Canvas& canvas) override {
         auto const& palette = theme().colors();
         fillRounded(canvas, m_bounds, Metrics::controlCornerRadius, palette.cardFill);
-        strokeRounded(canvas, m_bounds, Metrics::controlCornerRadius, palette.cardStroke);
-
-        float const centreY = (m_bounds.top + m_bounds.bottom) * 0.5f;
-        float column = m_bounds.left + kCardPadding;
-        if (m_showArt) {
-            float const artWidth = controllerArtWidth(kArtHeight);
-            drawControllerArt(canvas,
-                              D2D1::RectF(column, centreY - kArtHeight * 0.5f, column + artWidth,
-                                          centreY + kArtHeight * 0.5f),
-                              art());
-            column += artWidth + kArtGap;
+        if (m_alert == TileAlert::None) {
+            strokeRounded(canvas, m_bounds, Metrics::controlCornerRadius, palette.cardStroke);
+        } else {
+            D2D1_COLOR_F const accent = alertColor();
+            D2D1_COLOR_F edge = accent;
+            edge.a *= 0.6f;
+            strokeRounded(canvas, m_bounds, Metrics::controlCornerRadius, edge,
+                          kAlertStrokeWidth);
+            float const inset = kTilePadding * 0.5f;
+            fillRounded(canvas,
+                        D2D1::RectF(m_bounds.left + 1.0f, m_bounds.top + inset,
+                                    m_bounds.left + 1.0f + kAlertBarWidth,
+                                    m_bounds.bottom - inset),
+                        kAlertBarWidth * 0.5f, accent);
         }
+
+        float const left = m_bounds.left + kTilePadding;
+        float const right = m_bounds.right - kTilePadding;
+        float const top = m_bounds.top + kTilePadding;
+        float const rowCentre = top + kTopRowHeight * 0.5f;
+
+        paintKind(canvas, left, rowCentre);
         drawRingGauge(canvas,
-                      D2D1::RectF(column, centreY - kGaugeSize * 0.5f, column + kGaugeSize,
-                                  centreY + kGaugeSize * 0.5f),
-                      gauge(), theme().textFormat(TypeStyle::Subtitle));
+                      D2D1::RectF(right - kRingSize, rowCentre - kRingSize * 0.5f, right,
+                                  rowCentre + kRingSize * 0.5f),
+                      gauge(), theme().textFormat(TypeStyle::BodyStrong));
 
-        float const left = column + kGaugeSize + kGaugeTextGap;
-        float height = m_name.size().height + kLineGap + m_status.size().height;
-        if (!m_approximate.empty()) {
-            height += kLineGap + m_approximate.size().height;
-        }
-        if (!m_remaining.empty()) {
-            height += kLineGap + m_remaining.size().height;
-        }
-        height += kLineGap + m_updated.size().height;
-
-        float y = centreY - height * 0.5f;
+        float y = top + kTopRowHeight + kTopRowGap;
         auto line = [&](TextBlock& block, D2D1_COLOR_F color) {
             block.draw(canvas, D2D1::Point2F(left, y), color);
             y += block.size().height + kLineGap;
@@ -197,7 +231,7 @@ public:
             y += m_approximate.size().height + kLineGap;
         }
         if (!m_remaining.empty()) {
-            line(m_remaining, palette.textSecondary);
+            line(m_remaining, m_alert == TileAlert::None ? palette.textSecondary : alertColor());
         }
         line(m_updated, palette.textTertiary);
     }
@@ -207,20 +241,40 @@ private:
         return info.percent < 0 ? 0.0f : static_cast<float>(info.percent) / 100.0f;
     }
 
-    static float textColumnWidth(float availableWidth, bool withArt) {
-        float used = kCardPadding * 2.0f + kGaugeSize + kGaugeTextGap;
-        if (withArt) {
-            used += controllerArtWidth(kArtHeight) + kArtGap;
+    D2D1_COLOR_F alertColor() const {
+        auto const& palette = theme().colors();
+        return m_alert == TileAlert::Critical ? palette.critical : palette.caution;
+    }
+
+    // The pad keeps its portrait; every other kind gets its Fluent glyph on a badge of the
+    // same height and a similar tone, so a row of mixed tiles reads as one set.
+    void paintKind(Canvas& canvas, float left, float centreY) const {
+        if (m_kind == DeviceKind::Gamepad) {
+            drawControllerArt(canvas,
+                              D2D1::RectF(left, centreY - kArtHeight * 0.5f,
+                                          left + controllerArtWidth(kArtHeight),
+                                          centreY + kArtHeight * 0.5f),
+                              art());
+            return;
         }
-        return availableWidth - used;
+        auto const& palette = theme().colors();
+        D2D1_COLOR_F fill = palette.controlStrongFill;
+        fill.a *= 0.16f;
+        D2D1_RECT_F const badge = D2D1::RectF(left, centreY - kBadgeSize * 0.5f,
+                                              left + kBadgeSize, centreY + kBadgeSize * 0.5f);
+        fillRounded(canvas, badge, kBadgeRadius, fill);
+        drawIcon(canvas, kindGlyph(m_kind), kBadgeGlyphSize, badge, palette.textSecondary);
     }
 
     void apply(DeviceInfo const& info, std::optional<std::chrono::minutes> remaining) {
+        auto const& settings = SettingsStore::instance().get();
         m_id = info.id;
+        m_kind = info.kind;
         m_percent = info.percent;
         m_charging = info.charge == ChargeState::Charging;
         m_coarse = info.fidelity == Fidelity::Coarse && info.percent >= 0;
         m_link = connectionLink(info);
+        m_alert = tileAlert(info, settings.lowThresholdPercent, settings.criticalThresholdPercent);
 
         m_name.setText(info.name);
         m_status.setText(statusLine(info));
@@ -279,17 +333,73 @@ private:
     TextBlock m_remaining;
     TextBlock m_updated;
     Animated m_fill{0.0f};
+    DeviceKind m_kind = DeviceKind::Other;
     ControllerLink m_link = ControllerLink::None;
+    TileAlert m_alert = TileAlert::None;
     int m_percent = -1;
     bool m_charging = false;
     bool m_coarse = false;
-    bool m_showArt = true;
 };
 
-ControllersPage::ControllersPage(PageContext context) : Page(std::move(context)) {}
+namespace {
 
-void ControllersPage::build(StackPanel& column) {
-    m_cards.clear();
+// The tiles of one section, placed on the columns tileColumns works out. Every tile in a row
+// takes the height of the tallest, so a name that wraps does not leave its neighbours short.
+class TileGrid : public Container {
+public:
+    float measure(float availableWidth) override {
+        m_columns = tileColumns(availableWidth, host() != nullptr ? host()->scale() : 1.0f);
+        m_rowHeights.clear();
+        std::size_t const perRow = m_columns.size();
+        for (std::size_t i = 0; i < m_children.size(); ++i) {
+            TileColumn const& column = m_columns[i % perRow];
+            float const height = m_children[i]->measure(column.right - column.left);
+            if (i % perRow == 0) {
+                m_rowHeights.push_back(height);
+            } else {
+                m_rowHeights.back() = std::max(m_rowHeights.back(), height);
+            }
+        }
+        float total = 0.0f;
+        for (float const height : m_rowHeights) {
+            total += height;
+        }
+        if (!m_rowHeights.empty()) {
+            total += kTileGap * static_cast<float>(m_rowHeights.size() - 1);
+        }
+        return total;
+    }
+
+    void arrange(D2D1_RECT_F bounds) override {
+        Widget::arrange(bounds);
+        if (m_columns.empty()) {
+            return;
+        }
+        std::size_t const perRow = m_columns.size();
+        float y = bounds.top;
+        for (std::size_t i = 0; i < m_children.size(); ++i) {
+            std::size_t const row = i / perRow;
+            TileColumn const& column = m_columns[i % perRow];
+            float const height = m_rowHeights[row];
+            m_children[i]->arrange(D2D1::RectF(bounds.left + column.left, y,
+                                               bounds.left + column.right, y + height));
+            if (i % perRow == perRow - 1) {
+                y += height + kTileGap;
+            }
+        }
+    }
+
+private:
+    std::vector<TileColumn> m_columns;
+    std::vector<float> m_rowHeights;
+};
+
+}  // namespace
+
+DevicesPage::DevicesPage(PageContext context) : Page(std::move(context)) {}
+
+void DevicesPage::build(StackPanel& column) {
+    m_tiles.clear();
     m_refresh = nullptr;
 
     auto header = std::make_unique<PageHeader>(std::wstring(text(Text::DevicesTitle)));
@@ -307,34 +417,44 @@ void ControllersPage::build(StackPanel& column) {
     header->setAction(std::move(refresh));
     column.add(std::move(header));
 
-    auto const& controllers = *m_context.controllers;
-    if (controllers.empty()) {
-        column.emplace<EmptyState>(glyph::kGamepad, std::wstring(text(Text::NoControllers)),
-                                   std::wstring(text(Text::NoControllersHint)));
+    auto const& devices = *m_context.controllers;
+    if (devices.empty()) {
+        column.emplace<EmptyState>(glyph::kDevices, std::wstring(text(Text::NoDevices)),
+                                   std::wstring(text(Text::NoDevicesHint)));
         return;
     }
 
-    for (auto const& controller : controllers) {
-        m_cards.push_back(column.emplace<ControllerCard>(controller, remainingFor(controller)));
+    bool first = true;
+    for (DeviceGroup const& group : groupByKind(devices)) {
+        auto* title = column.emplace<Label>(std::wstring(text(sectionTitle(group.kind))),
+                                            TypeStyle::BodyStrong);
+        title->setMargin({0.0f, first ? 0.0f : kSectionTopMargin, 0.0f, kSectionBottomMargin});
+        first = false;
+
+        auto* grid = column.emplace<TileGrid>();
+        for (std::size_t const index : group.members) {
+            DeviceInfo const& device = devices[index];
+            m_tiles.push_back(grid->emplace<DeviceTile>(device, remainingFor(device)));
+        }
     }
     buildNames(column);
 }
 
 // One row per device, titled with the name its provider reports so that a renamed device can
 // still be told apart from its twin. The field holds only the custom name: empty means none.
-void ControllersPage::buildNames(StackPanel& column) {
+void DevicesPage::buildNames(StackPanel& column) {
     auto* group = column.emplace<SettingsGroup>(std::wstring(text(Text::DeviceNamesHeader)),
                                                 std::wstring(text(Text::DeviceNamesDescription)));
     DeviceNames const& names = SettingsStore::instance().get().deviceNames;
-    for (auto const& controller : *m_context.controllers) {
+    for (auto const& device : *m_context.controllers) {
         std::wstring const& reported =
-            controller.reportedName.empty() ? controller.name : controller.reportedName;
-        auto const custom = names.find(controller.id);
+            device.reportedName.empty() ? device.name : device.reportedName;
+        auto const custom = names.find(device.id);
 
         auto* row = group->addCard(glyph::kRename, reported);
         row->setControl(std::make_unique<TextBox>(
             custom != names.end() ? custom->second : std::wstring{}, reported,
-            kMaxDeviceNameLength, [this, id = controller.id](std::wstring const& name) {
+            kMaxDeviceNameLength, [this, id = device.id](std::wstring const& name) {
                 if (!m_context.applySettings) {
                     return;
                 }
@@ -347,27 +467,26 @@ void ControllersPage::buildNames(StackPanel& column) {
     }
 }
 
-void ControllersPage::refreshValues() {
+void DevicesPage::refreshValues() {
     if (m_refresh != nullptr) {
         m_refresh->setEnabled(true);
     }
-    auto const& controllers = *m_context.controllers;
-    for (auto* card : m_cards) {
+    auto const& devices = *m_context.controllers;
+    for (auto* tile : m_tiles) {
         auto const found = std::find_if(
-            controllers.begin(), controllers.end(),
-            [card](DeviceInfo const& info) { return info.id == card->id(); });
-        if (found != controllers.end()) {
-            card->update(*found, remainingFor(*found));
+            devices.begin(), devices.end(),
+            [tile](DeviceInfo const& info) { return info.id == tile->id(); });
+        if (found != devices.end()) {
+            tile->update(*found, remainingFor(*found));
         }
     }
 }
 
-std::optional<std::chrono::minutes> ControllersPage::remainingFor(
-    DeviceInfo const& controller) const {
-    if (!m_context.history || !controller.hasBattery()) {
+std::optional<std::chrono::minutes> DevicesPage::remainingFor(DeviceInfo const& device) const {
+    if (!m_context.history || !device.hasBattery()) {
         return std::nullopt;
     }
-    return m_context.history->estimatedRemaining(controller);
+    return m_context.history->estimatedRemaining(device);
 }
 
 }  // namespace peek::ui
