@@ -10,8 +10,10 @@
 
 #include <algorithm>
 #include <format>
+#include <map>
 #include <mutex>
 #include <optional>
+#include <utility>
 
 #include "core/Logger.h"
 
@@ -219,9 +221,10 @@ std::vector<DeviceInfo> WinRtBatteryProvider::poll() {
     std::vector<DeviceInfo> result;
     result.reserve(controllers.size());
 
-    for (std::size_t i = 0; i < controllers.size(); ++i) {
-        RawGameController const& controller = controllers[i];
+    // How many devices of each vendor/product pair have already had to be named below.
+    std::map<std::pair<std::uint16_t, std::uint16_t>, std::size_t> unnamedSoFar;
 
+    for (RawGameController const& controller : controllers) {
         DeviceInfo info;
         // Windows.Gaming.Input enumerates pads, wheels, flight sticks and arcade sticks --
         // things you play with, and nothing else.
@@ -247,7 +250,20 @@ std::vector<DeviceInfo> WinRtBatteryProvider::poll() {
                 info.name = identity.DisplayName();
             }
             if (info.id.empty()) {
-                info.id = std::format(L"wgi:{:04x}:{:04x}:{}", info.vendorId, info.productId, i);
+                // The discriminator counts only the devices that also could not name
+                // themselves, never this device's position in the vector: that position
+                // moves whenever any unrelated pad connects or disconnects, and every
+                // consumer keys on the id, so the pad would read as having left and a
+                // different one as having arrived -- a chime, a reset "first seen" and a
+                // forked history series, for a pad that did nothing.
+                //
+                // Two of the same model that both land here still trade numbers when the
+                // earlier one leaves. Nothing reachable from this API tells them apart, and
+                // a shared id would be worse: consumers that collapse by id would show one
+                // card for the two of them.
+                std::size_t const ordinal = unnamedSoFar[{info.vendorId, info.productId}]++;
+                info.id = std::format(L"wgi:{:04x}:{:04x}:{}", info.vendorId, info.productId,
+                                      ordinal);
             }
 
             // Reaching TryGetBatteryReport through the projection throws E_NOINTERFACE on
