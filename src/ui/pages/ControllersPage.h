@@ -8,6 +8,7 @@
 
 namespace peek::ui {
 
+class Button;
 class ControllerCard;
 
 // One card per connected controller: name, connection kind, an animated gauge, the charge
@@ -26,6 +27,8 @@ private:
     std::optional<std::chrono::minutes> remainingFor(DeviceInfo const& controller) const;
 
     std::vector<ControllerCard*> m_cards;
+    // Disabled from the click until the monitor answers, so a refresh visibly happens.
+    Button* m_refresh = nullptr;
 };
 
 }  // namespace peek::ui

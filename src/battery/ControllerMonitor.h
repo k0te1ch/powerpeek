@@ -34,7 +34,8 @@ public:
     // Include pads that are not Microsoft Xbox controllers.
     void setIncludeNonXbox(bool include);
 
-    // Polls out of band, e.g. after the user opens the window.
+    // Polls out of band, e.g. after the user presses Refresh. The poll that answers it is
+    // posted to the UI thread even when no reading moved, so its timestamps reach the screen.
     void refreshNow();
 
     // The most recent reading. Safe to call from any thread.
