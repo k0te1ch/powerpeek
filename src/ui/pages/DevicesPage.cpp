@@ -64,6 +64,9 @@ ControllerLink connectionLink(DeviceInfo const& info) {
     if (info.source == PowerSource::Wired) {
         return ControllerLink::Usb;
     }
+    if (info.viaReceiver) {
+        return ControllerLink::Receiver;
+    }
     if (info.vendorId == kVendorMicrosoft && isBluetoothProductId(info.productId)) {
         return ControllerLink::Bluetooth;
     }
@@ -81,6 +84,8 @@ std::optional<std::wstring_view> connectionText(ControllerLink link) {
             return text(Text::ConnectionWireless);
         case ControllerLink::Bluetooth:
             return text(Text::ConnectionBluetooth);
+        case ControllerLink::Receiver:
+            return text(Text::ConnectionReceiver);
         case ControllerLink::None:
             break;
     }
@@ -432,8 +437,8 @@ private:
         return m_alert == TileAlert::Critical ? palette.critical : palette.caution;
     }
 
-    // The pad keeps its portrait; every other kind gets its Fluent glyph on a badge of the
-    // same height and a similar tone, so a row of mixed tiles reads as one set.
+    // The pad and the mouse keep their portraits; every other kind gets its Fluent glyph on a
+    // badge of the same height and a similar tone, so a row of mixed tiles reads as one set.
     void paintKind(Canvas& canvas, float left, float centreY) const {
         if (m_kind == DeviceKind::Gamepad) {
             drawControllerArt(canvas,
@@ -441,6 +446,14 @@ private:
                                           left + controllerArtWidth(kArtHeight),
                                           centreY + kArtHeight * 0.5f),
                               art());
+            return;
+        }
+        if (m_kind == DeviceKind::Mouse) {
+            drawMouseArt(canvas,
+                         D2D1::RectF(left, centreY - kArtHeight * 0.5f,
+                                     left + mouseArtWidth(kArtHeight),
+                                     centreY + kArtHeight * 0.5f),
+                         art());
             return;
         }
         auto const& palette = theme().colors();
