@@ -53,6 +53,9 @@ ControllerLink connectionLink(DeviceInfo const& info) {
     if (info.source == PowerSource::Wired) {
         return ControllerLink::Usb;
     }
+    if (info.viaReceiver) {
+        return ControllerLink::Receiver;
+    }
     if (info.vendorId == kVendorMicrosoft && isBluetoothProductId(info.productId)) {
         return ControllerLink::Bluetooth;
     }
@@ -70,6 +73,8 @@ std::optional<std::wstring_view> connectionText(ControllerLink link) {
             return text(Text::ConnectionWireless);
         case ControllerLink::Bluetooth:
             return text(Text::ConnectionBluetooth);
+        case ControllerLink::Receiver:
+            return text(Text::ConnectionReceiver);
         case ControllerLink::None:
             break;
     }
@@ -156,11 +161,16 @@ public:
         float const centreY = (m_bounds.top + m_bounds.bottom) * 0.5f;
         float column = m_bounds.left + kCardPadding;
         if (m_showArt) {
+            // Every card reserves the pad's width, so that the gauges of a mixed list line up;
+            // the narrower mouse is centred in it.
             float const artWidth = controllerArtWidth(kArtHeight);
-            drawControllerArt(canvas,
-                              D2D1::RectF(column, centreY - kArtHeight * 0.5f, column + artWidth,
-                                          centreY + kArtHeight * 0.5f),
-                              art());
+            D2D1_RECT_F const artBox = D2D1::RectF(column, centreY - kArtHeight * 0.5f,
+                                                   column + artWidth, centreY + kArtHeight * 0.5f);
+            if (m_kind == DeviceKind::Mouse) {
+                drawMouseArt(canvas, artBox, art());
+            } else {
+                drawControllerArt(canvas, artBox, art());
+            }
             column += artWidth + kArtGap;
         }
         drawRingGauge(canvas,
@@ -217,6 +227,7 @@ private:
 
     void apply(DeviceInfo const& info, std::optional<std::chrono::minutes> remaining) {
         m_id = info.id;
+        m_kind = info.kind;
         m_percent = info.percent;
         m_charging = info.charge == ChargeState::Charging;
         m_coarse = info.fidelity == Fidelity::Coarse && info.percent >= 0;
@@ -273,6 +284,7 @@ private:
     }
 
     std::wstring m_id;
+    DeviceKind m_kind = DeviceKind::Gamepad;
     TextBlock m_name;
     TextBlock m_status;
     TextBlock m_approximate;

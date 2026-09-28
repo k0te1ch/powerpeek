@@ -199,9 +199,10 @@ void drawRingGauge(Canvas& canvas,
                    GaugeVisual const& visual,
                    IDWriteTextFormat* label);
 
-// How a pad reached the machine, for the badge in the corner of its portrait. An enum of its
+// How a device reached the machine, for the badge in the corner of its portrait. An enum of its
 // own rather than the battery layer's types, so Drawing.h stays a leaf of the include graph.
-enum class ControllerLink { None, Usb, Wireless, Bluetooth };
+// Receiver is a vendor's own 2.4 GHz dongle, as opposed to the Xbox Wireless one.
+enum class ControllerLink { None, Usb, Wireless, Bluetooth, Receiver };
 
 // The colours a controller portrait is drawn from. As everywhere else here they come from the
 // caller, so the same geometry serves a card today and a flyout tomorrow.
@@ -226,6 +227,14 @@ void drawControllerArt(Canvas& canvas, D2D1_RECT_F bounds, ControllerArt const& 
 // Width the portrait occupies when it is given `height` DIPs. The artwork keeps its aspect
 // ratio, so a caller reserving a column needs this to place whatever comes after it.
 float controllerArtWidth(float height);
+
+// A mouse seen from above, fitted into `bounds` and centred there, from the same palette as the
+// pad: the guide colour goes on the scroll wheel. A Receiver link is drawn as a radio mark on a
+// badge beside the heel, any other link as its glyph there.
+void drawMouseArt(Canvas& canvas, D2D1_RECT_F bounds, ControllerArt const& art);
+
+// Width the mouse portrait occupies at `height` DIPs, badge included.
+float mouseArtWidth(float height);
 
 struct ChartPoint {
     double x;  // any ascending unit; the chart only cares about the range
