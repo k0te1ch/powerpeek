@@ -156,7 +156,12 @@ constexpr float kGuideThreshold = 26.0f;
 constexpr float kBadgeThreshold = 40.0f;
 constexpr float kDetailThreshold = 50.0f;
 
-com_ptr<ID2D1PathGeometry> controllerBody(Canvas& canvas, ArtSpace const& space) {
+// A closed outline from its right half: the segments run clockwise from `start` on the centre
+// line, and the left half is drawn as their mirror image on the way back.
+com_ptr<ID2D1PathGeometry> mirroredOutline(Canvas& canvas,
+                                           ArtSpace const& space,
+                                           D2D1_POINT_2F start,
+                                           std::span<ArtSegment const> right) {
     com_ptr<ID2D1GeometrySink> sink;
     auto path = beginPath(canvas, sink);
     if (!path) {
@@ -165,21 +170,25 @@ com_ptr<ID2D1PathGeometry> controllerBody(Canvas& canvas, ArtSpace const& space)
 
     auto mirror = [](D2D1_POINT_2F p) { return D2D1::Point2F(-p.x, p.y); };
 
-    sink->BeginFigure(space.at(kBodyStart), D2D1_FIGURE_BEGIN_FILLED);
-    for (auto const& segment : kBodyRight) {
+    sink->BeginFigure(space.at(start), D2D1_FIGURE_BEGIN_FILLED);
+    for (auto const& segment : right) {
         sink->AddBezier(D2D1::BezierSegment(space.at(segment.c1), space.at(segment.c2),
                                             space.at(segment.end)));
     }
-    for (std::size_t i = std::size(kBodyRight); i-- > 0;) {
-        auto const& segment = kBodyRight[i];
-        D2D1_POINT_2F const start = i == 0 ? kBodyStart : kBodyRight[i - 1].end;
+    for (std::size_t i = right.size(); i-- > 0;) {
+        auto const& segment = right[i];
+        D2D1_POINT_2F const from = i == 0 ? start : right[i - 1].end;
         sink->AddBezier(D2D1::BezierSegment(space.at(mirror(segment.c2)),
                                             space.at(mirror(segment.c1)),
-                                            space.at(mirror(start))));
+                                            space.at(mirror(from))));
     }
     sink->EndFigure(D2D1_FIGURE_END_CLOSED);
     sink->Close();
     return path;
+}
+
+com_ptr<ID2D1PathGeometry> controllerBody(Canvas& canvas, ArtSpace const& space) {
+    return mirroredOutline(canvas, space, kBodyStart, kBodyRight);
 }
 
 // The stick as two concentric discs: the well it moves in, and the cap on top of it. Two flat
@@ -211,6 +220,7 @@ std::wstring_view linkGlyph(ControllerLink link) {
         case ControllerLink::Usb:
             return glyph::kUsb;
         case ControllerLink::Wireless:
+        case ControllerLink::Receiver:
             return glyph::kWireless;
         case ControllerLink::Bluetooth:
             return glyph::kBluetooth;
@@ -218,6 +228,109 @@ std::wstring_view linkGlyph(ControllerLink link) {
             break;
     }
     return {};
+}
+
+// ---- The mouse portrait ------------------------------------------------------------------
+//
+// Seen from above, in the same one-unit-tall design space as the pad, from the same colours and
+// at the same stroke weight, so a mouse and a pad side by side read as one set. The level colour
+// goes on the scroll wheel, the one control a mouse shows from above, as it goes on the guide
+// button of the pad.
+
+// The body is two thirds of a unit wide; the rest is room for the badge beside its heel.
+constexpr float kMouseAspect = 0.96f;
+// How far the drawing moves left when the badge is there, so that body and badge together sit
+// in the middle of the box rather than the body alone.
+constexpr float kMouseBadgeShift = 0.13f;
+
+constexpr D2D1_POINT_2F kMouseStart{0.000f, 0.020f};
+constexpr ArtSegment kMouseRight[] = {
+    {{0.170f, 0.020f}, {0.272f, 0.100f}, {0.292f, 0.330f}},  // the nose, rounding into the side
+    {{0.310f, 0.560f}, {0.338f, 0.780f}, {0.250f, 0.915f}},  // the flank, fullest under the palm
+    {{0.185f, 0.990f}, {0.085f, 1.000f}, {0.000f, 1.000f}},  // the heel
+};
+
+constexpr D2D1_POINT_2F kWheel{0.000f, 0.195f};
+constexpr float kWheelHalfWidth = 0.032f;
+constexpr float kWheelHalfHeight = 0.072f;
+constexpr float kWheelWell = 0.022f;  // how far the recess reaches past the wheel all round
+// Where the two buttons end and the palm rest begins: at the sides, and how much lower the seam
+// runs on the centre line.
+constexpr float kSeamSideX = 0.298f;
+constexpr float kSeamSideY = 0.400f;
+constexpr float kSeamDip = 0.050f;
+
+constexpr D2D1_POINT_2F kMouseBadge{0.455f, 0.835f};
+
+// The radio mark inside the receiver badge: a dot and two arcs over it, as fractions of the
+// badge radius, and the half-angle the arcs open to on either side of straight up.
+constexpr float kWaveOrigin = 0.40f;
+constexpr float kWaveInner = 0.42f;
+constexpr float kWaveOuter = 0.78f;
+constexpr float kWaveDot = 0.14f;
+constexpr float kWaveStroke = 0.16f;
+constexpr float kWaveHalfAngle = 0.85f;  // radians, just under fifty degrees
+
+com_ptr<ID2D1PathGeometry> mouseBody(Canvas& canvas, ArtSpace const& space) {
+    return mirroredOutline(canvas, space, kMouseStart, kMouseRight);
+}
+
+// The split between the buttons, and the seam where they meet the palm rest. Stroked rather
+// than filled, so they stay hairlines at any size.
+void drawMouseSeams(Canvas& canvas, ArtSpace const& space, ControllerArt const& art,
+                    float stroke) {
+    auto* brush = canvas.brush(art.bodyEdge);
+    com_ptr<ID2D1GeometrySink> sink;
+    auto path = beginPath(canvas, sink);
+    if (!brush || !path) {
+        return;
+    }
+    sink->BeginFigure(space.at(0.0f, kMouseStart.y), D2D1_FIGURE_BEGIN_HOLLOW);
+    sink->AddLine(space.at(0.0f, kSeamSideY + kSeamDip * 0.75f));
+    sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    sink->BeginFigure(space.at(-kSeamSideX, kSeamSideY), D2D1_FIGURE_BEGIN_HOLLOW);
+    sink->AddBezier(D2D1::BezierSegment(space.at(-kSeamSideX * 0.5f, kSeamSideY + kSeamDip),
+                                        space.at(kSeamSideX * 0.5f, kSeamSideY + kSeamDip),
+                                        space.at(kSeamSideX, kSeamSideY)));
+    sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    sink->Close();
+    canvas.target().DrawGeometry(path.get(), brush, stroke);
+}
+
+void drawWheel(Canvas& canvas, ArtSpace const& space, ControllerArt const& art) {
+    float const well = kWheelHalfWidth + kWheelWell;
+    fillRounded(canvas, space.box(kWheel, well, kWheelHalfHeight + kWheelWell), well * space.unit,
+                art.recess);
+    fillRounded(canvas, space.box(kWheel, kWheelHalfWidth, kWheelHalfHeight),
+                kWheelHalfWidth * space.unit, art.guide);
+}
+
+// The receiver the mouse talks through, drawn as a radio mark rather than taken from the icon
+// font: the font's wireless glyph is the one the pad card already spends on Xbox Wireless, and
+// a mouse on a dongle of its own is not that.
+void drawRadioMark(Canvas& canvas, D2D1_POINT_2F center, float radius, D2D1_COLOR_F color) {
+    D2D1_POINT_2F const origin = D2D1::Point2F(center.x, center.y + radius * kWaveOrigin);
+    fillCircle(canvas, origin, radius * kWaveDot, color);
+
+    auto* brush = canvas.brush(color);
+    com_ptr<ID2D1GeometrySink> sink;
+    auto path = beginPath(canvas, sink);
+    if (!brush || !path) {
+        return;
+    }
+    float const sine = std::sin(kWaveHalfAngle);
+    float const cosine = std::cos(kWaveHalfAngle);
+    for (float const reach : {kWaveInner, kWaveOuter}) {
+        float const r = radius * reach;
+        sink->BeginFigure(D2D1::Point2F(origin.x - r * sine, origin.y - r * cosine),
+                          D2D1_FIGURE_BEGIN_HOLLOW);
+        sink->AddArc(D2D1::ArcSegment(D2D1::Point2F(origin.x + r * sine, origin.y - r * cosine),
+                                      D2D1::SizeF(r, r), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                                      D2D1_ARC_SIZE_SMALL));
+        sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    }
+    sink->Close();
+    canvas.target().DrawGeometry(path.get(), brush, radius * kWaveStroke);
 }
 
 // Monotone cubic Hermite tangents (Fritsch-Carlson). A plain Catmull-Rom spline overshoots
@@ -905,6 +1018,51 @@ void drawControllerArt(Canvas& canvas, D2D1_RECT_F bounds, ControllerArt const& 
     fillCircle(canvas, space.at(kBadge), radius, art.badgeFill);
     drawIcon(canvas, badge, radius * 1.15f,
              space.box(kBadge, kBadgeRadius, kBadgeRadius), art.badge);
+}
+
+float mouseArtWidth(float height) { return std::max(0.0f, height) * kMouseAspect; }
+
+void drawMouseArt(Canvas& canvas, D2D1_RECT_F bounds, ControllerArt const& art) {
+    ArtSpace space;
+    space.unit = std::min(width(bounds) / kMouseAspect, height(bounds));
+    if (space.unit <= 0.0f) {
+        return;
+    }
+    bool const badged = art.link != ControllerLink::None && space.unit >= kBadgeThreshold;
+    space.center = D2D1::Point2F(
+        (bounds.left + bounds.right) * 0.5f - (badged ? kMouseBadgeShift * space.unit : 0.0f),
+        (bounds.top + bounds.bottom) * 0.5f);
+
+    auto body = mouseBody(canvas, space);
+    if (!body) {
+        return;
+    }
+    float const stroke = std::max(canvas.pixel(), space.unit * 0.018f);
+    if (auto* fill = canvas.brush(art.body)) {
+        canvas.target().FillGeometry(body.get(), fill);
+    }
+    if (auto* edge = canvas.brush(art.bodyEdge)) {
+        canvas.target().DrawGeometry(body.get(), edge, stroke);
+    }
+
+    // The seams stay at every size: without the button split a small mouse is an egg, and the
+    // split is the cheapest line that says otherwise.
+    drawMouseSeams(canvas, space, art, stroke);
+    if (space.unit >= kGuideThreshold) {
+        drawWheel(canvas, space, art);
+    }
+
+    if (!badged) {
+        return;
+    }
+    float const radius = kBadgeRadius * space.unit;
+    fillCircle(canvas, space.at(kMouseBadge), radius, art.badgeFill);
+    if (art.link == ControllerLink::Receiver) {
+        drawRadioMark(canvas, space.at(kMouseBadge), radius, art.badge);
+        return;
+    }
+    drawIcon(canvas, linkGlyph(art.link), radius * 1.15f,
+             space.box(kMouseBadge, kBadgeRadius, kBadgeRadius), art.badge);
 }
 
 void drawHistoryChart(Canvas& canvas,

@@ -129,12 +129,14 @@ target_compile_definitions(pp_compile_settings INTERFACE
 # point, so a file joins this side of it only deliberately.
 set(PP_CORE_SOURCES
     core/AppPaths.cpp
+    core/Digest.cpp
     core/Json.cpp
     core/Logger.cpp
     core/Settings.cpp
     core/Strings.cpp
     core/Win.cpp
     battery/BatteryHistory.cpp
+    battery/CompxProtocol.cpp
     battery/DeviceInfo.cpp
     battery/DeviceMerge.cpp
     battery/ChargeReminder.cpp
@@ -193,6 +195,7 @@ target_link_libraries(PowerPeek PRIVATE
     dwmapi          # dark title bar / Win11 backdrop probing
     uxtheme         # dark mode for the few system-drawn surfaces (menus)
     cfgmgr32        # the device tree, where Bluetooth battery levels live
+    setupapi hid    # HID interfaces, for the vendor battery queries of mouse receivers
     shell32         # tray icon, shell links
     shlwapi
     propsys         # AppUserModelID on the Start Menu shortcut

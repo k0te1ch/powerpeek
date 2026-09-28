@@ -40,6 +40,7 @@ constexpr Entry kTable[] = {
     {Text::ConnectionUsb, L"USB", L"USB"},
     {Text::ConnectionWireless, L"Xbox Wireless", L"Xbox Wireless"},
     {Text::ConnectionBluetooth, L"Bluetooth", L"Bluetooth"},
+    {Text::ConnectionReceiver, L"2.4 GHz receiver", L"Приёмник 2,4 ГГц"},
     {Text::EstimatedRemaining, L"About {} left", L"Осталось примерно {}"},
     {Text::UpdatedJustNow, L"Updated just now", L"Обновлено только что"},
     {Text::UpdatedMinutesAgo, L"Updated {} min ago", L"Обновлено {} мин назад"},

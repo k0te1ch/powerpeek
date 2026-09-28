@@ -202,11 +202,16 @@ battery of **anything you connect to the machine**. In order:
 - **Mice, keyboards, pens and trackers** over Bluetooth LE, read on connect and then by notification,
   never by polling — polling would wake the device and drain the battery it is reporting.
 - **Wired and radio peripherals** that publish the standard HID battery usage.
-- **Vendor protocols**, one vendor at a time, for devices that publish nothing standard.
+- **Vendor protocols**, one vendor at a time, for devices that publish nothing standard. The first
+  one is in: **mice on Compx 2.4 GHz receivers**, the dongle VGN, VXE, ATK and Pulsar ship with
+  their wireless mice. The app sends the receiver its battery query and nothing else — no setting
+  is read or written. It has been checked on a VGN Dragonfly F1 MOBA; other mice on the same
+  receiver firmware should work, and one the app has no model name for still shows its level under
+  its brand. A mouse that is asleep or switched off shows no level rather than an empty battery.
 
 One caveat stated up front, because it will not go away: plenty of peripherals report no battery at
-all through any documented route. On the development machine not one of 36 HID collections did —
-headset, two mice, keyboard and drawing tablet included. A device whose protocol is unknown will not
+all through any documented route. On the development machine not one of 36 HID collections did
+through the standard HID battery usage — headset, two mice, keyboard and drawing tablet included. A device whose protocol is unknown will not
 show a level, and this README will keep saying so.
 
 ## Contributing
