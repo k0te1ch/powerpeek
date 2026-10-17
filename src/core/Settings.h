@@ -186,6 +186,15 @@ struct Settings {
     // appeared, so an existing installation is not moved by gaining the setting.
     ToastPosition toastPosition = ToastPosition::BottomRight;
 
+    // A small card on the desktop listing every connected device. Off by default: it is a
+    // second place on screen the application draws into, and nobody asked for it yet.
+    bool widgetEnabled = false;
+    // Where the user dragged it: the window's top-left corner in virtual-screen pixels. Only
+    // meaningful once widgetPlaced is set; until then it opens in the top right corner.
+    bool widgetPlaced = false;
+    int widgetX = 0;
+    int widgetY = 0;
+
     BackdropMode backdrop = BackdropMode::Opaque;
     // Alpha of the window's own background layer, in [kMinimumWindowOpacity, 1]. Fully
     // opaque by default: the backdrop is opt-in and nothing about the shipped window

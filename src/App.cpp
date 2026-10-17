@@ -21,6 +21,7 @@
 #include "notify/NotificationCenter.h"
 #include "notify/SystemToast.h"
 #include "platform/Platform.h"
+#include "ui/DesktopWidget.h"
 #include "ui/MainWindow.h"
 #include "ui/Theme.h"
 #include "ui/TrayIcon.h"
@@ -74,6 +75,7 @@ struct App::Impl {
     std::unique_ptr<ControllerMonitor> monitor;
     std::unique_ptr<ui::TrayIcon> tray;
     std::unique_ptr<ui::MainWindow> window;
+    std::unique_ptr<ui::DesktopWidget> widget;
 
     Signal<Settings const&, Settings const&>::Token settingsToken = 0;
 
@@ -87,6 +89,7 @@ struct App::Impl {
     void postReminders(std::vector<DetectedEvent> events, Settings const& settings);
     void onSettingsChanged(Settings const& current, Settings const& previous);
     void onSystemColorsChanged();
+    void applyWidget(Settings const& settings);
     void toggleMainWindow();
     void showMainWindow();
     void requestExit();
@@ -159,6 +162,9 @@ bool App::Impl::createSubsystems() {
         return false;
     }
 
+    widget = std::make_unique<ui::DesktopWidget>();
+    applyWidget(settings);
+
     monitor = std::make_unique<ControllerMonitor>(hub, kControllersChangedMessage);
     monitor->setIncludeNonXbox(settings.includeNonXboxGamepads);
     return true;
@@ -169,6 +175,20 @@ void App::Impl::connectSignals() {
     tray->openRequested.connect([this] { showMainWindow(); });
     tray->refreshRequested.connect([this] { monitor->refreshNow(); });
     tray->exitRequested.connect([this] { requestExit(); });
+
+    widget->openRequested.connect([this] { showMainWindow(); });
+    widget->hideRequested.connect([] {
+        Settings next = SettingsStore::instance().get();
+        next.widgetEnabled = false;
+        SettingsStore::instance().apply(std::move(next));
+    });
+    widget->moved.connect([](POINT position) {
+        Settings next = SettingsStore::instance().get();
+        next.widgetPlaced = true;
+        next.widgetX = position.x;
+        next.widgetY = position.y;
+        SettingsStore::instance().apply(std::move(next));
+    });
 
     settingsToken = SettingsStore::instance().changed.connect(
         [this](Settings const& current, Settings const& previous) {
@@ -204,6 +224,17 @@ void App::Impl::onControllersChanged() {
     controllers = std::move(snapshot);
     tray->update(controllers, settings);
     window->setControllers(controllers);
+    widget->setControllers(controllers);
+}
+
+void App::Impl::applyWidget(Settings const& settings) {
+    if (!settings.widgetEnabled) {
+        widget->hide();
+        return;
+    }
+    POINT const saved{settings.widgetX, settings.widgetY};
+    widget->setControllers(controllers);
+    widget->show(settings.widgetPlaced ? &saved : nullptr);
 }
 
 void App::Impl::checkReminders() {
@@ -265,6 +296,16 @@ void App::Impl::onSettingsChanged(Settings const& current, Settings const& previ
     if (current.deviceNames != previous.deviceNames) {
         applyDeviceNames(controllers, current.deviceNames);
         window->setControllers(controllers);
+        widget->setControllers(controllers);
+    }
+
+    // Not for a drag: the new position is what the card already shows, and showing it again
+    // would snap it back through the same coordinates for nothing.
+    if (current.widgetEnabled != previous.widgetEnabled) {
+        applyWidget(current);
+    }
+    if (current.language != previous.language) {
+        widget->languageChanged();
     }
 
     notifications->applySettings(current);
@@ -312,6 +353,7 @@ void App::Impl::shutdown() {
     tray.reset();
     notifications.reset();
     window.reset();
+    widget.reset();
     monitor.reset();
     history.reset();
 
