@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -44,5 +45,28 @@ std::wstring deviceIdFromContainer(GUID const& container);
 // address, and this id is written to the battery log that sits in the user's profile. A digest
 // keys just as well and names nothing.
 std::wstring deviceIdFromInstance(std::wstring_view instanceId);
+
+// Whether a devnode is the device itself rather than one of its services.
+//
+// A Bluetooth device is one devnode named after it -- BTHENUM\DEV_<address> for classic,
+// BTHLE\DEV_<address> for LE -- with a child per service under it. The battery level lives on a
+// service child (the hands-free one for a headset) under that service's name, "REDMI Buds 8 Pro
+// Hands-Free AG"; the device node carries the name the user paired and the connection state.
+// Measured on Windows 10 19045 with REDMI Buds 8 Pro.
+bool isBluetoothDeviceNode(std::wstring_view instanceId) noexcept;
+
+// The name a card shows for a battery found on `serviceName`'s devnode: the device node's name
+// when the sweep found one in the same container, otherwise the service name without the
+// service it names.
+std::wstring displayName(std::wstring_view deviceName, std::wstring_view serviceName);
+
+// Whether a battery reading belongs to a device that is connected right now.
+//
+// The hands-free child keeps its last level after the headset goes away, so the level alone
+// says nothing about whether the device is there. The connection state is the device node's
+// to report, and its answer wins when the sweep found one; without it the service's own answer
+// is taken, and a devnode that says nothing at all counts as connected, which is what the
+// devnodes measured to carry a level without a device node above them did.
+bool isConnected(std::optional<bool> deviceNode, std::optional<bool> serviceNode) noexcept;
 
 }  // namespace peek::pnp

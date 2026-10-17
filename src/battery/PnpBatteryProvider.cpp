@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cwchar>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -143,14 +144,44 @@ std::vector<DeviceInfo> PnpBatteryProvider::poll() {
 
     auto const now = std::chrono::system_clock::now();
 
-    for (wchar_t const* id = ids.data(); *id != L'\0'; id += std::wcslen(id) + 1) {
+    // PHANTOM rather than NORMAL: a headset that has just gone idle is still present but no
+    // longer started, and NORMAL would skip exactly the device whose level matters.
+    auto locate = [](wchar_t const* id) -> std::optional<DEVINST> {
         DEVINST node = 0;
-        // PHANTOM rather than NORMAL: a headset that has just gone idle is still present but
-        // no longer started, and NORMAL would skip exactly the device whose level matters.
         if (CM_Locate_DevNodeW(&node, const_cast<DEVINSTID_W>(id), CM_LOCATE_DEVNODE_PHANTOM) !=
             CR_SUCCESS) {
+            return std::nullopt;
+        }
+        return node;
+    };
+
+    // The Bluetooth device nodes first, by container: they hold the name the user knows the
+    // device by and its connection state, while the level sits on a service child below them.
+    struct DeviceNode {
+        std::wstring name;
+        std::optional<bool> connected;
+    };
+    std::map<std::wstring, DeviceNode> deviceNodes;
+    for (wchar_t const* id = ids.data(); *id != L'\0'; id += std::wcslen(id) + 1) {
+        if (!pnp::isBluetoothDeviceNode(id)) {
             continue;
         }
+        auto const node = locate(id);
+        auto const container = node ? readGuid(*node, kContainerId) : std::nullopt;
+        if (!container) {
+            continue;
+        }
+        deviceNodes.insert_or_assign(pnp::deviceIdFromContainer(*container),
+                                     DeviceNode{readString(*node, kName).value_or(std::wstring{}),
+                                                readBool(*node, kIsConnected)});
+    }
+
+    for (wchar_t const* id = ids.data(); *id != L'\0'; id += std::wcslen(id) + 1) {
+        auto const located = locate(id);
+        if (!located) {
+            continue;
+        }
+        DEVINST const node = *located;
 
         auto const raw = readByte(node, kBatteryLevel);
         if (!raw) {
@@ -160,13 +191,6 @@ std::vector<DeviceInfo> PnpBatteryProvider::poll() {
         if (percent < 0) {
             continue;
         }
-        // Absent means connected: the property is undocumented, and the devnodes measured to
-        // carry it at all carried it as true. A device that is genuinely gone is filtered out
-        // by the present-only list above rather than by this.
-        if (!readBool(node, kIsConnected).value_or(true)) {
-            continue;
-        }
-
         DeviceInfo info;
         auto const container = readGuid(node, kContainerId);
         // The instance id would do as a key, but for Bluetooth it contains the device address
@@ -174,7 +198,17 @@ std::vector<DeviceInfo> PnpBatteryProvider::poll() {
         // container id is both the better key and the one that is nobody's serial number.
         info.id = container ? pnp::deviceIdFromContainer(*container)
                             : pnp::deviceIdFromInstance(id);
-        info.name = readString(node, kName).value_or(std::wstring{});
+
+        // A paired headset that is switched off keeps both its devnodes and its last level, so
+        // being in the present-only list proves nothing; the connection state has to say so.
+        auto const device = deviceNodes.find(info.id);
+        bool const hasDeviceNode = device != deviceNodes.end();
+        if (!pnp::isConnected(hasDeviceNode ? device->second.connected : std::nullopt,
+                              readBool(node, kIsConnected))) {
+            continue;
+        }
+        info.name = pnp::displayName(hasDeviceNode ? device->second.name : std::wstring_view{},
+                                     readString(node, kName).value_or(std::wstring{}));
         info.kind = pnp::kindFromClassOfDevice(
             readUint32(node, kClassOfDevice)
                 .value_or(readUint32(node, kClassOfDeviceDeprecated).value_or(0)));

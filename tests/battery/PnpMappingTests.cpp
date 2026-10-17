@@ -15,6 +15,7 @@
 
 #include "battery/PnpMapping.h"
 
+#include <optional>
 #include <string>
 
 namespace {
@@ -22,6 +23,9 @@ namespace {
 using peek::DeviceKind;
 using peek::pnp::deviceIdFromContainer;
 using peek::pnp::deviceIdFromInstance;
+using peek::pnp::displayName;
+using peek::pnp::isBluetoothDeviceNode;
+using peek::pnp::isConnected;
 using peek::pnp::kindFromClassOfDevice;
 using peek::pnp::levelFromProperty;
 
@@ -168,4 +172,51 @@ TEST_CASE("pnpMapping: the same device gets the same id every sweep, and two dev
     CHECK(deviceIdFromInstance(first) == deviceIdFromInstance(first));
     CHECK(deviceIdFromInstance(first) != deviceIdFromInstance(second));
     CHECK(deviceIdFromInstance(L"") == deviceIdFromInstance(L""));
+}
+
+// The instance ids below are the shapes measured on Windows 10 19045 with REDMI Buds 8 Pro
+// paired over a TP-Link adapter, with the hardware address replaced.
+TEST_CASE("pnpMapping: the device node is told apart from its service children") {
+    CHECK(isBluetoothDeviceNode(
+        L"BTHENUM\\DEV_AABBCCDDEEFF\\8&145D39EB&0&BLUETOOTHDEVICE_AABBCCDDEEFF"));
+    CHECK(isBluetoothDeviceNode(L"BTHLE\\DEV_AABBCCDDEEFF\\7&1&0"));
+    CHECK(isBluetoothDeviceNode(L"bthenum\\dev_aabbccddeeff\\8&0"));
+    CHECK_FALSE(isBluetoothDeviceNode(
+        L"BTHENUM\\{0000111E-0000-1000-8000-00805F9B34FB}_VID&000102B0_PID&0000\\8&145D39EB&0&"
+        L"AABBCCDDEEFF_C00000000"));
+    CHECK_FALSE(isBluetoothDeviceNode(
+        L"BTHENUM\\{0000FD2D-0000-1000-8000-00805F9B34FB}_VID&000102B0_PID&0000\\8&0"));
+    CHECK_FALSE(isBluetoothDeviceNode(L"BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_X"));
+    CHECK_FALSE(isBluetoothDeviceNode(L"USB\\VID_2357&PID_0604\\C03A55D36B85"));
+    CHECK_FALSE(isBluetoothDeviceNode(L"BTHENUM"));
+}
+
+TEST_CASE("pnpMapping: the card takes the device's name, not the service's") {
+    CHECK(displayName(L"REDMI Buds 8 Pro", L"REDMI Buds 8 Pro Hands-Free AG") ==
+          L"REDMI Buds 8 Pro");
+    // A name the user gave the device in Settings is on the device node too.
+    CHECK(displayName(L"My buds", L"REDMI Buds 8 Pro Hands-Free AG") == L"My buds");
+}
+
+TEST_CASE("pnpMapping: with no device node the service is cut off the name") {
+    CHECK(displayName(L"", L"REDMI Buds 8 Pro Hands-Free AG") == L"REDMI Buds 8 Pro");
+    CHECK(displayName(L"", L"WH-1000XM4 Hands-Free") == L"WH-1000XM4");
+    CHECK(displayName(L"", L"MX Master 3") == L"MX Master 3");
+    // Nothing is left to show once the suffix is gone, so it stays.
+    CHECK(displayName(L"", L" Hands-Free AG") == L" Hands-Free AG");
+    CHECK(displayName(L"", L"") == L"");
+}
+
+TEST_CASE("pnpMapping: the device node decides whether the device is connected") {
+    // Measured: buds switched off, both nodes saying not connected, the level still 100.
+    CHECK_FALSE(isConnected(false, false));
+    CHECK(isConnected(true, false));
+    CHECK_FALSE(isConnected(false, true));
+    CHECK(isConnected(true, std::nullopt));
+}
+
+TEST_CASE("pnpMapping: without a device node the service node is believed") {
+    CHECK(isConnected(std::nullopt, true));
+    CHECK_FALSE(isConnected(std::nullopt, false));
+    CHECK(isConnected(std::nullopt, std::nullopt));
 }

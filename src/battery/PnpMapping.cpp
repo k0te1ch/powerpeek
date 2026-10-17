@@ -1,5 +1,7 @@
 #include "battery/PnpMapping.h"
 
+#include <array>
+#include <cwctype>
 #include <format>
 
 #include "core/Digest.h"
@@ -61,7 +63,53 @@ DeviceKind peripheralKind(std::uint32_t minor) noexcept {
     return DeviceKind::Other;
 }
 
+// Compared without regard to case: instance ids are case-insensitive, and Windows has spelled
+// these prefixes both ways across releases.
+bool startsWithNoCase(std::wstring_view text, std::wstring_view prefix) noexcept {
+    if (text.size() < prefix.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < prefix.size(); ++i) {
+        if (towupper(text[i]) != towupper(prefix[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool endsWith(std::wstring_view text, std::wstring_view suffix) noexcept {
+    return text.size() > suffix.size() && text.substr(text.size() - suffix.size()) == suffix;
+}
+
+// The services Windows appends to a device's name on the child devnodes that can carry a level.
+// Not localised: the Russian build measured here writes them in English as well.
+constexpr std::array<std::wstring_view, 2> kServiceSuffixes{L" Hands-Free AG", L" Hands-Free"};
+
 }  // namespace
+
+bool isBluetoothDeviceNode(std::wstring_view instanceId) noexcept {
+    return startsWithNoCase(instanceId, L"BTHENUM\\DEV_") ||
+           startsWithNoCase(instanceId, L"BTHLE\\DEV_");
+}
+
+std::wstring displayName(std::wstring_view deviceName, std::wstring_view serviceName) {
+    if (!deviceName.empty()) {
+        return std::wstring{deviceName};
+    }
+    for (std::wstring_view const suffix : kServiceSuffixes) {
+        if (endsWith(serviceName, suffix)) {
+            return std::wstring{serviceName.substr(0, serviceName.size() - suffix.size())};
+        }
+    }
+    return std::wstring{serviceName};
+}
+
+bool isConnected(std::optional<bool> deviceNode, std::optional<bool> serviceNode) noexcept {
+    if (deviceNode) {
+        return *deviceNode;
+    }
+    return serviceNode.value_or(true);
+}
 
 int levelFromProperty(std::uint32_t raw) noexcept {
     return raw <= 100 ? static_cast<int>(raw) : -1;
