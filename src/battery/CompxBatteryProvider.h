@@ -56,6 +56,8 @@ private:
         int modelAttempts = 0;
         // What the last poll got. Kept so that the log records a change, not every poll.
         Status status = Status::Unknown;
+        // Rides out the odd poll the receiver leaves unanswered while the mouse is in use.
+        compx::ReadingHold hold;
         // When the mouse last gave a reading, so a silent one says how long it has been.
         std::chrono::system_clock::time_point lastAnswered{};
     };

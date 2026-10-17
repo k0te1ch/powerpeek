@@ -62,6 +62,8 @@ struct Reading {
     // The mouse is on its cable, which is all the firmware says about charging.
     bool onCable = false;
     int millivolts = 0;
+
+    bool operator==(Reading const&) const = default;
 };
 
 // The reading in a battery reply, or nothing when the report is not one that can be believed:
@@ -73,6 +75,27 @@ std::optional<Reading> parseBatteryReply(std::span<std::uint8_t const> report) n
 // On the cable means charging, and charging at 100 % means full. Off the cable the battery is
 // draining, and saying so is what lets the low warnings and the time-left estimate apply.
 ChargeState chargeStateOf(Reading const& reading) noexcept;
+
+// How many polls in a row may go unanswered before a mouse that was answering counts as silent.
+//
+// Measured on a VGN receiver with the mouse in use: a whole poll -- three requests -- now and
+// then gets no reply, and the card went blank and came back every half minute, logging both
+// ways each time. A mouse that has really gone to sleep stays silent for every poll after, so
+// waiting for a few in a row costs a sleeping mouse a minute or two of its last level and
+// nothing else.
+inline constexpr int kMissesBeforeSilent = 3;
+
+// The reading a card shows, given what the latest poll got. A fresh reading is taken as it is;
+// a miss keeps the last reading until kMissesBeforeSilent polls in a row have missed, and then
+// there is none until the mouse answers again.
+class ReadingHold {
+public:
+    std::optional<Reading> update(std::optional<Reading> const& fresh) noexcept;
+
+private:
+    std::optional<Reading> m_last;
+    int m_misses = 0;
+};
 
 // What the model request answers: a customer id, which is the brand's line, and a model id
 // within it. The receiver's USB ids cannot stand in for these -- VGN ships one receiver id with

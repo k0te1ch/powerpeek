@@ -292,8 +292,9 @@ std::vector<DeviceInfo> CompxBatteryProvider::poll() {
     for (Receiver& receiver : m_receivers) {
         Exchange const answer =
             exchange(receiver.path, compx::batteryRequest(), &compx::isBatteryReply);
-        std::optional<compx::Reading> const reading =
+        std::optional<compx::Reading> const fresh =
             answer.reply ? compx::parseBatteryReply(*answer.reply) : std::nullopt;
+        std::optional<compx::Reading> const reading = receiver.hold.update(fresh);
         Status const status = !answer.opened ? Status::Unreachable
                               : reading      ? Status::Answering
                                              : Status::Silent;
@@ -324,7 +325,7 @@ std::vector<DeviceInfo> CompxBatteryProvider::poll() {
             continue;
         }
         // Asked only now that the mouse is known to be awake: asleep, it could not answer.
-        if (reading) {
+        if (fresh) {
             askModel(receiver);
         }
 
@@ -343,7 +344,9 @@ std::vector<DeviceInfo> CompxBatteryProvider::poll() {
             info.percent = reading->percent;
             info.source = PowerSource::Battery;
             info.charge = compx::chargeStateOf(*reading);
-            receiver.lastAnswered = now;
+            if (fresh) {
+                receiver.lastAnswered = now;
+            }
         }
         // Silent: no level, and nothing about the power either -- percent stays -1, source and
         // charge stay Unknown. The time is when the mouse last spoke, so the card can say how

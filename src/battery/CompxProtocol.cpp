@@ -228,6 +228,19 @@ std::optional<Reading> parseBatteryReply(std::span<std::uint8_t const> report) n
     return reading;
 }
 
+std::optional<Reading> ReadingHold::update(std::optional<Reading> const& fresh) noexcept {
+    if (fresh) {
+        m_last = fresh;
+        m_misses = 0;
+        return m_last;
+    }
+    if (m_last && ++m_misses < kMissesBeforeSilent) {
+        return m_last;
+    }
+    m_last.reset();
+    return std::nullopt;
+}
+
 ChargeState chargeStateOf(Reading const& reading) noexcept {
     if (!reading.onCable) {
         return ChargeState::Discharging;

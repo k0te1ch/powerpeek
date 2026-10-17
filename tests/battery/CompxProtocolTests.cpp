@@ -14,6 +14,7 @@
 
 #include "battery/CompxProtocol.h"
 
+#include <optional>
 #include <string>
 
 namespace {
@@ -282,4 +283,32 @@ TEST_CASE("compxProtocol: with no brand to read, the product string is the name"
     CHECK(identify(0x3554, 0x0001, L"VGNX 2.4G Receiver", std::nullopt).name == L"VGNX");
     CHECK(identify(0x3554, 0x0001, L"Compx Dongle", std::nullopt).name == L"Compx");
     CHECK(identify(0x3554, 0x0001, L"", std::nullopt).name == L"Wireless mouse");
+}
+
+TEST_CASE("compxProtocol: one unanswered poll keeps the last reading") {
+    peek::compx::ReadingHold hold;
+    Reading const seventy{70, false, 3988};
+    CHECK(hold.update(seventy) == std::optional<Reading>{seventy});
+    // Measured: a mouse in use leaves a whole poll unanswered now and then.
+    CHECK(hold.update(std::nullopt) == std::optional<Reading>{seventy});
+    CHECK(hold.update(seventy) == std::optional<Reading>{seventy});
+}
+
+TEST_CASE("compxProtocol: a run of unanswered polls is a silent mouse") {
+    peek::compx::ReadingHold hold;
+    Reading const seventy{70, false, 3988};
+    hold.update(seventy);
+    for (int miss = 1; miss < peek::compx::kMissesBeforeSilent; ++miss) {
+        CHECK(hold.update(std::nullopt).has_value());
+    }
+    CHECK_FALSE(hold.update(std::nullopt).has_value());
+    // Still silent on the next miss, and back as soon as the mouse answers.
+    CHECK_FALSE(hold.update(std::nullopt).has_value());
+    Reading const sixtyNine{69, false, 3970};
+    CHECK(hold.update(sixtyNine) == std::optional<Reading>{sixtyNine});
+}
+
+TEST_CASE("compxProtocol: a mouse that never answered has nothing to hold") {
+    peek::compx::ReadingHold hold;
+    CHECK_FALSE(hold.update(std::nullopt).has_value());
 }
