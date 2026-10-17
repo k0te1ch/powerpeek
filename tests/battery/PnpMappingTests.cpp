@@ -208,8 +208,9 @@ TEST_CASE("pnpMapping: with no device node the service is cut off the name") {
 }
 
 TEST_CASE("pnpMapping: the device node decides whether the device is connected") {
-    // Measured: buds switched off, both nodes saying not connected, the level still 100.
+    // Measured: buds in the case, both nodes saying not connected, the level still 100.
     CHECK_FALSE(isConnected(false, false));
+    // Measured: buds in use, the device node connected, the hands-free child not.
     CHECK(isConnected(true, false));
     CHECK_FALSE(isConnected(false, true));
     CHECK(isConnected(true, std::nullopt));

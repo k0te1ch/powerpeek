@@ -62,11 +62,12 @@ std::wstring displayName(std::wstring_view deviceName, std::wstring_view service
 
 // Whether a battery reading belongs to a device that is connected right now.
 //
-// The hands-free child keeps its last level after the headset goes away, so the level alone
-// says nothing about whether the device is there. The connection state is the device node's
-// to report, and its answer wins when the sweep found one; without it the service's own answer
-// is taken, and a devnode that says nothing at all counts as connected, which is what the
-// devnodes measured to carry a level without a device node above them did.
+// The connection state is the device node's to report. Measured on REDMI Buds 8 Pro: with the
+// buds in the ears and playing, the device node says connected and the hands-free child that
+// carries the level says not connected -- and the child keeps its last level after the buds go
+// back in the case. Reading the child alone would hide a connected headset for good. So the
+// device node's answer wins when the sweep found one; without it the service's own answer is
+// taken, and a devnode that says nothing at all counts as connected.
 bool isConnected(std::optional<bool> deviceNode, std::optional<bool> serviceNode) noexcept;
 
 }  // namespace peek::pnp
