@@ -145,6 +145,7 @@ set(PP_CORE_SOURCES
     battery/SnapshotPolicy.cpp
     battery/EventDetector.cpp
     battery/HistoryCsv.cpp
+    battery/LogitechHeadsetProtocol.cpp
     audio/WavReader.cpp
     notify/QuietPolicy.cpp
     notify/ToastLayout.cpp
@@ -196,7 +197,7 @@ target_link_libraries(PowerPeek PRIVATE
     dwmapi          # dark title bar / Win11 backdrop probing
     uxtheme         # dark mode for the few system-drawn surfaces (menus)
     cfgmgr32        # the device tree, where Bluetooth battery levels live
-    setupapi hid    # HID interfaces, for the vendor battery queries of mouse receivers
+    setupapi hid    # HID interfaces, for the vendor battery queries of receivers and dongles
     shell32         # tray icon, shell links
     shlwapi
     propsys         # AppUserModelID on the Start Menu shortcut

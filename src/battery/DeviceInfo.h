@@ -70,7 +70,8 @@ struct DeviceInfo {
     bool isXboxController = false;
 
     // The device reaches the machine through a 2.4 GHz receiver of its own vendor's, rather
-    // than over a cable, Bluetooth or Xbox Wireless. Only the vendor mouse source knows this.
+    // than over a cable, Bluetooth or Xbox Wireless. Only the vendor HID sources -- mouse
+    // receivers and headset dongles -- know this.
     bool viaReceiver = false;
 
     // Populated only on the XInput path; -1 for WinRT-only devices.

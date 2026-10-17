@@ -212,6 +212,10 @@ battery of **anything you connect to the machine**. In order:
   is read or written. It has been checked on a VGN Dragonfly F1 MOBA; other mice on the same
   receiver firmware should work, and one the app has no model name for still shows its level under
   its brand. A mouse that is asleep or switched off shows no level rather than an empty battery.
+  The second is the **Logitech PRO X Wireless** headset on its Lightspeed dongle, read over HID++
+  without G HUB: the app asks for the battery voltage and nothing else. The percentage comes from
+  the voltage curve HeadsetControl uses for the G PRO range, so treat it as an estimate. The wired
+  PRO X has no battery and is never asked.
 
 One caveat stated up front, because it will not go away: plenty of peripherals report no battery at
 all through any documented route. On the development machine not one of 36 HID collections did
