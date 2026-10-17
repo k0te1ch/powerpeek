@@ -13,6 +13,8 @@
 #include "core/Logger.h"
 #include "ui/Graphics.h"
 
+#include "../../resources/resource.h"
+
 namespace peek::ui {
 namespace {
 
@@ -716,6 +718,80 @@ void WindowShadow::draw(Canvas& canvas, D2D1_RECT_F body, float radius, D2D1_COL
         context->DrawBitmap(m_cache.get(), nullptr, 1.0f,
                             D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
     }
+}
+
+AppIconImage::AppIconImage() {
+    m_deviceToken = GraphicsDevice::instance().recreated.connect([this] {
+        m_bitmap = nullptr;
+        m_pixels = 0;
+    });
+}
+
+AppIconImage::~AppIconImage() {
+    GraphicsDevice::instance().recreated.disconnect(m_deviceToken);
+}
+
+void AppIconImage::draw(Canvas& canvas, D2D1_RECT_F bounds) {
+    float const scale = 1.0f / canvas.pixel();
+    auto const pixels = static_cast<UINT>(std::lround(std::max(1.0f, width(bounds)) * scale));
+
+    if (pixels != m_pixels) {
+        m_bitmap = nullptr;
+        m_pixels = pixels;
+        m_failed = false;
+    }
+    if (!m_bitmap && !m_failed) {
+        // Failing here costs a 16-pixel picture, so it is logged once and then left alone
+        // until the size changes, rather than retried on every frame.
+        m_failed = true;
+        auto* wic = GraphicsDevice::instance().wic();
+        auto* const icon = wic == nullptr
+                               ? nullptr
+                               : static_cast<HICON>(LoadImageW(
+                                     GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_APP),
+                                     IMAGE_ICON, static_cast<int>(pixels),
+                                     static_cast<int>(pixels), LR_DEFAULTCOLOR));
+        if (icon == nullptr) {
+            log::warning(L"The application icon could not be loaded at {} px", pixels);
+            return;
+        }
+        com_ptr<IWICBitmap> source;
+        com_ptr<IWICFormatConverter> converter;
+        HRESULT hr = wic->CreateBitmapFromHICON(icon, source.put());
+        DestroyIcon(icon);
+        if (SUCCEEDED(hr)) {
+            hr = wic->CreateFormatConverter(converter.put());
+        }
+        if (SUCCEEDED(hr)) {
+            hr = converter->Initialize(source.get(), GUID_WICPixelFormat32bppPBGRA,
+                                       WICBitmapDitherTypeNone, nullptr, 0.0,
+                                       WICBitmapPaletteTypeCustom);
+        }
+        if (SUCCEEDED(hr)) {
+            // The bitmap's DPI is the target's, so its size in DIPs is the size asked for.
+            auto const properties = D2D1::BitmapProperties(
+                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
+                96.0f * scale, 96.0f * scale);
+            hr = canvas.target().CreateBitmapFromWicBitmap(converter.get(), &properties,
+                                                            m_bitmap.put());
+        }
+        if (FAILED(hr)) {
+            log::warning(L"The application icon could not be converted: {}",
+                         describeHresult(hr));
+            m_bitmap = nullptr;
+            return;
+        }
+        m_failed = false;
+    }
+    if (!m_bitmap) {
+        return;
+    }
+
+    float const size = static_cast<float>(pixels) / scale;
+    float const left = canvas.snap(bounds.left + (width(bounds) - size) * 0.5f);
+    float const top = canvas.snap(bounds.top + (height(bounds) - size) * 0.5f);
+    canvas.target().DrawBitmap(m_bitmap.get(), D2D1::RectF(left, top, left + size, top + size),
+                               1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
 }
 
 void drawBatteryGauge(Canvas& canvas, D2D1_RECT_F bounds, GaugeVisual const& visual) {
