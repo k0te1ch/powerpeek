@@ -457,6 +457,14 @@ private:
                          art());
             return;
         }
+        if (m_kind == DeviceKind::Keyboard) {
+            drawKeyboardArt(canvas,
+                            D2D1::RectF(left, centreY - kArtHeight * 0.5f,
+                                        left + keyboardArtWidth(kArtHeight),
+                                        centreY + kArtHeight * 0.5f),
+                            art());
+            return;
+        }
         auto const& palette = theme().colors();
         D2D1_COLOR_F fill = palette.controlStrongFill;
         fill.a *= 0.16f;

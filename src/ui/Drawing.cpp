@@ -1207,6 +1207,80 @@ void drawMouseArt(Canvas& canvas, D2D1_RECT_F bounds, ControllerArt const& art) 
              space.box(kMouseBadge, kBadgeRadius, kBadgeRadius), art.badge);
 }
 
+// ---- The keyboard portrait ---------------------------------------------------------------
+//
+// A slab seen from above with two rows of keys and a space bar, from the pad's palette. The level
+// colour goes on the space bar, the one key a keyboard is recognised by at a glance.
+
+constexpr float kKeyboardAspect = 1.50f;
+constexpr float kKeyboardBadgeShift = 0.16f;
+constexpr float kKeyboardHalfWidth = 0.58f;
+constexpr float kKeyboardHalfHeight = 0.27f;
+constexpr float kKeyboardCorner = 0.050f;
+constexpr float kKeyRowPitch = 0.135f;
+constexpr float kKeyHalfHeight = 0.0475f;
+constexpr float kKeyGap = 0.012f;
+constexpr float kKeyAreaHalfWidth = 0.53f;
+constexpr float kSpaceBarHalfWidth = 0.30f;
+constexpr D2D1_POINT_2F kKeyboardBadge{0.755f, 0.500f};
+
+void drawKeyRow(Canvas& canvas, ArtSpace const& space, ControllerArt const& art, float y,
+                int count, bool staggered) {
+    float const pitch = kKeyAreaHalfWidth * 2.0f / 8.0f;
+    float const first = -kKeyAreaHalfWidth + pitch * (staggered ? 1.0f : 0.5f);
+    float const halfWidth = pitch * 0.5f - kKeyGap;
+    for (int i = 0; i < count; ++i) {
+        fillRounded(canvas, space.box(D2D1::Point2F(first + pitch * static_cast<float>(i), y),
+                                      halfWidth, kKeyHalfHeight),
+                    kKeyHalfHeight * space.unit * 0.45f, art.detail);
+    }
+}
+
+float keyboardArtWidth(float height) { return std::max(0.0f, height) * kKeyboardAspect; }
+
+void drawKeyboardArt(Canvas& canvas, D2D1_RECT_F bounds, ControllerArt const& art) {
+    ArtSpace space;
+    space.unit = std::min(width(bounds) / kKeyboardAspect, height(bounds));
+    if (space.unit <= 0.0f) {
+        return;
+    }
+    bool const badged = art.link != ControllerLink::None && space.unit >= kBadgeThreshold;
+    space.center = D2D1::Point2F(
+        (bounds.left + bounds.right) * 0.5f - (badged ? kKeyboardBadgeShift * space.unit : 0.0f),
+        (bounds.top + bounds.bottom) * 0.5f);
+
+    D2D1_RECT_F const slab =
+        space.box(D2D1::Point2F(0.0f, 0.5f), kKeyboardHalfWidth, kKeyboardHalfHeight);
+    float const corner = kKeyboardCorner * space.unit;
+    fillRounded(canvas, slab, corner, art.body);
+    if (auto* edge = canvas.brush(art.bodyEdge)) {
+        canvas.target().DrawRoundedRectangle(D2D1::RoundedRect(slab, corner, corner), edge,
+                                             std::max(canvas.pixel(), space.unit * 0.018f));
+    }
+
+    float const top = 0.5f - kKeyRowPitch;
+    if (space.unit >= kDetailThreshold) {
+        drawKeyRow(canvas, space, art, top, 8, false);
+        drawKeyRow(canvas, space, art, 0.5f, 7, true);
+    }
+    fillRounded(canvas,
+                space.box(D2D1::Point2F(0.0f, 0.5f + kKeyRowPitch), kSpaceBarHalfWidth,
+                          kKeyHalfHeight),
+                kKeyHalfHeight * space.unit * 0.45f, art.guide);
+
+    if (!badged) {
+        return;
+    }
+    float const radius = kBadgeRadius * space.unit;
+    fillCircle(canvas, space.at(kKeyboardBadge), radius, art.badgeFill);
+    if (art.link == ControllerLink::Receiver) {
+        drawRadioMark(canvas, space.at(kKeyboardBadge), radius, art.badge);
+        return;
+    }
+    drawIcon(canvas, linkGlyph(art.link), radius * 1.15f,
+             space.box(kKeyboardBadge, kBadgeRadius, kBadgeRadius), art.badge);
+}
+
 void drawHistoryChart(Canvas& canvas,
                       D2D1_RECT_F bounds,
                       std::span<ChartPoint const> points,

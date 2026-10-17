@@ -264,6 +264,13 @@ void drawMouseArt(Canvas& canvas, D2D1_RECT_F bounds, ControllerArt const& art);
 // Width the mouse portrait occupies at `height` DIPs, badge included.
 float mouseArtWidth(float height);
 
+// A keyboard seen from above, fitted into `bounds` and centred there; the guide colour goes on
+// the space bar. The link badge sits beside the slab, as on the mouse.
+void drawKeyboardArt(Canvas& canvas, D2D1_RECT_F bounds, ControllerArt const& art);
+
+// Width the keyboard portrait occupies at `height` DIPs, badge included.
+float keyboardArtWidth(float height);
+
 struct ChartPoint {
     double x;  // any ascending unit; the chart only cares about the range
     double y;  // percent, 0..100
