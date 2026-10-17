@@ -41,7 +41,7 @@ bool appendLine(std::wstring& tip, std::wstring const& line, std::size_t capacit
 }
 
 std::wstring omittedNotice(std::size_t omitted) {
-    return formatText(Text::TrayMoreControllers, omitted);
+    return formatText(Text::TrayMoreDevices, omitted);
 }
 
 std::wstring escapeMnemonics(std::wstring const& label) {
@@ -84,7 +84,7 @@ std::wstring describeDevice(DeviceInfo const& device) {
 std::wstring buildTrayTooltip(std::vector<DeviceInfo> const& devices, std::size_t capacity) {
     std::wstring tip(text(Text::AppName));
     if (devices.empty()) {
-        appendLine(tip, std::wstring(text(Text::NoControllers)), capacity);
+        appendLine(tip, std::wstring(text(Text::NoDevices)), capacity);
         return tip;
     }
 
@@ -113,7 +113,7 @@ std::wstring buildTrayTooltip(std::vector<DeviceInfo> const& devices, std::size_
 std::vector<std::wstring> trayMenuLines(std::vector<DeviceInfo> const& devices) {
     std::vector<std::wstring> lines;
     if (devices.empty()) {
-        lines.emplace_back(text(Text::NoControllers));
+        lines.emplace_back(text(Text::NoDevices));
         return lines;
     }
     for (DeviceInfo const* device : trayOrder(devices)) {

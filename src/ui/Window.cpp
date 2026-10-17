@@ -10,6 +10,8 @@
 #include "platform/Platform.h"
 #include "ui/Theme.h"
 
+#include "../../resources/resource.h"
+
 namespace peek::ui {
 namespace {
 
@@ -87,8 +89,14 @@ bool D2DWindow::createWindow(CreateParams const& params) {
         // visible on a window with no redirection surface, and the system shadow is square
         // and would fight the one this window draws for itself.
         wc.lpszClassName = params.className.c_str();
-        wc.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(101));
-        wc.hIconSm = wc.hIcon;
+        // Each from the image the icon file holds for that size. Handing the large one in as the
+        // small one as well made the shell shrink 32 pixels to 16 itself, which blurs it.
+        wc.hIcon = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_APP), IMAGE_ICON,
+                                                 GetSystemMetrics(SM_CXICON),
+                                                 GetSystemMetrics(SM_CYICON), LR_SHARED));
+        wc.hIconSm = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_APP),
+                                                   IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                                                   GetSystemMetrics(SM_CYSMICON), LR_SHARED));
         if (!RegisterClassExW(&wc)) {
             log::error(L"RegisterClassEx failed for {}: {}", params.className,
                        describeHresult(HRESULT_FROM_WIN32(GetLastError())));

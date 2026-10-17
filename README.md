@@ -4,7 +4,7 @@
 
 # PowerPeek
 
-**Your controller's battery, in the notification area — with the warnings you actually want.**
+**Your controller's and headphones' battery, in the notification area — with the warnings you actually want.**
 
 [![CI](https://github.com/k0te1ch/powerpeek/actions/workflows/ci.yml/badge.svg)](https://github.com/k0te1ch/powerpeek/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/k0te1ch/powerpeek?color=107C10)](https://github.com/k0te1ch/powerpeek/releases/latest)
@@ -15,7 +15,7 @@
 
 **English** · [Русский](README.ru.md)
 
-<img src="docs/images/en/controllers.png" width="760" alt="The Controllers page, showing a connected pad and its charge level">
+<img src="docs/images/en/controllers.png" width="760" alt="The Devices page, showing connected devices grouped by kind with their charge levels">
 
 </div>
 
@@ -24,21 +24,23 @@
 ## Why this exists
 
 Windows knows your controller's battery level. It just will not tell you unless you open the Xbox
-Accessories app and keep it open.
+Accessories app and keep it open. The level of a Bluetooth headset or mouse is buried a few clicks deep
+in Settings.
 
-This puts the level in the notification area, keeps it there, and makes a noise before the controller
-dies instead of after. It is one 4 MB executable with nothing to install, no runtime, no service, and
+This puts the level of every device that reports one in the notification area, keeps it there, and
+makes a noise before the controller dies instead of after. It is one 4 MB executable with nothing to install, no runtime, no service, and
 no network code.
 
 ## Features
 
 |   | |
 |---|---|
-| **Live tray icon** | Drawn at runtime rather than chosen from a set of prebuilt images — a battery, a ring gauge or a plain percentage, in your theme and accent colour, at whatever size the shell asks for. With several pads connected it shows the lowest level and how many there are. |
+| **Live tray icon** | Drawn at runtime rather than chosen from a set of prebuilt images — a battery, a ring gauge or a plain percentage, in your theme and accent colour, at whatever size the shell asks for. With several devices connected it shows the lowest level and how many there are. |
 | **Sounds you choose** | Seven events — connected, disconnected, low, critically low, fully charged, and the two charging reminders — each with its own sound file, its own volume, and a Test button. WAV, MP3, FLAC, M4A. Built-in chimes ship inside the executable. |
+| **All your devices on one page** | Xbox controllers, plus Bluetooth headsets, mice, keyboards and pens whose level Windows knows, as a grid of tiles grouped by kind. Each tile has the level, the connection, the state and the time left, and a device running low stands out. Any device can be given a name of your own. |
 | **Charging reminders** | Optional, off by default. Once per charge, a nudge to unplug a controller that has sat full on the charger, or to charge one that was put away low and never came back. The delay is yours to pick. |
 | **Two kinds of notification** | The app's own Fluent card, which never steals focus from a game, and real Windows notifications that land in the Action Center. Per event, independently — and the app's own cards go in whichever corner or edge you send them to, which is how you keep them clear of the system's own toasts and of a game's overlay. |
-| **Battery history** | A chart of how each controller drains, the drain rate, and an estimate of how long is left. |
+| **Battery history** | A chart of how each device drains, the drain rate, and an estimate of how long is left. |
 | **A window that belongs on Windows** | Custom-drawn Fluent chrome, light and dark themes that follow the system, per-monitor DPI, and animation that costs nothing when nothing is moving. |
 | **A tray icon you can colour** | Automatic contrast against your taskbar by default — which matters, because a taskbar tinted with your accent swallows an accent-coloured mark — or the system accent, or a colour you pick. Low and critical keep their amber and red regardless. |
 | **English and Russian** | Follows your Windows display language, or pick one. |
@@ -85,6 +87,8 @@ winget install k0te1ch.PowerPeek
   window corners automatically.
 - An Xbox controller: Xbox One, Xbox Series, Elite, Elite Series 2 or Adaptive, over USB, the Xbox
   Wireless Adapter or Bluetooth.
+- Or any Bluetooth device whose battery level Windows itself shows in Settings: headphones, earbuds,
+  mice, keyboards, pens.
 
 Third-party pads can be shown too — there is a setting for it — but their battery readings are
 frequently wrong, which is why they are hidden by default.
@@ -233,7 +237,7 @@ A short tour of the layout:
 | Directory | What lives there |
 |---|---|
 | `src/core` | Settings, JSON, logging, paths, localisation |
-| `src/battery` | Reading controller charge, detecting events, history |
+| `src/battery` | Reading device charge, detecting events, history |
 | `src/audio` | Decoding sound files and playing them |
 | `src/notify` | Turning an event into a sound, a card and a toast |
 | `src/platform` | Autostart, single instance, system theme, shell integration |

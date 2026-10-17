@@ -147,6 +147,7 @@ set(PP_CORE_SOURCES
     notify/QuietPolicy.cpp
     notify/ToastLayout.cpp
     ui/Animation.cpp
+    ui/DeviceGrid.cpp
     ui/Quantise.cpp
     ui/TrayText.cpp)
 list(TRANSFORM PP_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/src/")

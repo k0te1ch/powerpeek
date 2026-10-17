@@ -172,6 +172,31 @@ private:
     bool m_unsupported = false;
 };
 
+// The application's own icon, as the executable carries it, drawn at a size given in DIPs.
+//
+// The icon file holds hand-tuned images for 16, 24 and 32 pixels, which is the title bar at
+// 100, 150 and 200 %. The image for the exact pixel size is taken from the resource and drawn
+// one texel to one pixel, so the small sizes stay as crisp as the shell draws them; any other
+// scale gets the nearest image resampled by the system once, not stretched on every frame.
+// Kept as a bitmap and rebuilt only when the pixel size or the Direct2D device changes.
+class AppIconImage {
+public:
+    AppIconImage();
+    ~AppIconImage();
+
+    AppIconImage(AppIconImage const&) = delete;
+    AppIconImage& operator=(AppIconImage const&) = delete;
+
+    // `bounds` is a square in DIPs; the icon is placed on the pixel grid inside it.
+    void draw(Canvas& canvas, D2D1_RECT_F bounds);
+
+private:
+    com_ptr<ID2D1Bitmap> m_bitmap;
+    std::uint64_t m_deviceToken = 0;
+    UINT m_pixels = 0;
+    bool m_failed = false;
+};
+
 // What the battery visuals need to know. `fill` is separate from `percent` so it can be
 // animated: the number changes at once, the bar catches up.
 struct GaugeVisual {

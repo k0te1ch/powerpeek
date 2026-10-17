@@ -131,7 +131,7 @@ struct PlaceholderRow {
 };
 
 // Every entry with a {} in it, paired with the number of arguments the one formatText call site
-// that owns it passes: ControllersPage for the two device lines, HistoryPage for the drain rate,
+// that owns it passes: DevicesPage for the two device lines, HistoryPage for the drain rate,
 // AboutPage for the version, TrayIcon for the tooltip overflow, NotificationCenter for the four
 // toast strings. Anything else with a placeholder has no caller to substitute it.
 constexpr PlaceholderRow kPlaceholderRows[] = {
@@ -139,7 +139,7 @@ constexpr PlaceholderRow kPlaceholderRows[] = {
     {Text::UpdatedMinutesAgo, 1},
     {Text::DrainRate, 1},
     {Text::AboutVersion, 1},
-    {Text::TrayMoreControllers, 1},
+    {Text::TrayMoreDevices, 1},
     {Text::ToastConnected, 1},
     {Text::ToastDisconnected, 1},
     {Text::ToastBodyLevel, 2},
@@ -240,7 +240,7 @@ TEST_CASE("strings: the accessor returns the row that belongs to the id") {
     setLanguage(LanguagePreference::English);
 
     CHECK(text(Text::AppName) == L"PowerPeek");
-    CHECK(text(Text::AppTagline) == L"Controller battery, at a glance");
+    CHECK(text(Text::AppTagline) == L"Device battery, at a glance");
     CHECK(text(Text::UnitPercent) == L"%");
 
     // The load-bearing one: a lookup is a plain index, so a row inserted in the wrong place
@@ -419,7 +419,7 @@ TEST_CASE("strings: format arguments substitute into the english table") {
     // name, a battery level.
     CHECK(formatText(Text::AboutVersion, std::wstring(L"1.4.2")) == L"Version 1.4.2");
     CHECK(formatText(Text::UpdatedMinutesAgo, 7) == L"Updated 7 min ago");
-    CHECK(formatText(Text::TrayMoreControllers, 3) == L"+3 more");
+    CHECK(formatText(Text::TrayMoreDevices, 3) == L"+3 more");
     CHECK(formatText(Text::EstimatedRemaining, std::wstring(L"2 h 15 min")) ==
           L"About 2 h 15 min left");
     CHECK(formatText(Text::DrainRate, std::wstring(L"4.5")) == L"4.5% per hour");
@@ -500,9 +500,9 @@ TEST_CASE("strings: setLanguage swaps the whole table and swaps back") {
     CHECK(first == again);
 
     setLanguage(LanguagePreference::Russian);
-    CHECK(text(Text::NavDevices) != L"Controllers");
+    CHECK(text(Text::NavDevices) != L"Devices");
     setLanguage(LanguagePreference::English);
-    CHECK(text(Text::NavDevices) == L"Controllers");
+    CHECK(text(Text::NavDevices) == L"Devices");
 }
 
 TEST_CASE("strings: the system preference resolves to one concrete table") {
@@ -543,7 +543,7 @@ TEST_CASE("strings: a view taken before a switch keeps pointing at static storag
     setLanguage(LanguagePreference::English);
 
     std::wstring_view const captured = text(Text::NavDevices);
-    CHECK(captured == L"Controllers");
+    CHECK(captured == L"Devices");
 
     setLanguage(LanguagePreference::Russian);
 
@@ -551,6 +551,6 @@ TEST_CASE("strings: a view taken before a switch keeps pointing at static storag
     // is into string literals, so it never dangles and can go straight into a format call or a
     // wstring constructor -- but it does go stale, so any UI holding one has to re-read it after
     // the language changes.
-    CHECK(captured == L"Controllers");
+    CHECK(captured == L"Devices");
     CHECK(text(Text::NavDevices) != captured);
 }

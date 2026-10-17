@@ -88,10 +88,10 @@ TEST_CASE("trayText: the lowest battery comes first and devices with no level co
 
 TEST_CASE("trayText: with nothing connected both the tooltip and the menu say so") {
     English const english;
-    CHECK(buildTrayTooltip({}) == std::wstring(L"PowerPeek\r\nNo controllers connected"));
+    CHECK(buildTrayTooltip({}) == std::wstring(L"PowerPeek\r\nNo devices with a battery"));
     auto const lines = trayMenuLines({});
     REQUIRE(lines.size() == 1);
-    CHECK(lines[0] == std::wstring(L"No controllers connected"));
+    CHECK(lines[0] == std::wstring(L"No devices with a battery"));
 }
 
 TEST_CASE("trayText: the tooltip lists one device per line in tray order") {

@@ -10,7 +10,7 @@
 #include "ui/Drawing.h"
 #include "ui/Widgets.h"
 #include "ui/pages/AboutPage.h"
-#include "ui/pages/ControllersPage.h"
+#include "ui/pages/DevicesPage.h"
 #include "ui/pages/HistoryPage.h"
 #include "ui/pages/SettingsPage.h"
 #include "ui/pages/SoundsPage.h"
@@ -205,6 +205,7 @@ struct MainWindow::Impl {
 
     WidgetHost host;
     WindowShadow shadow;
+    AppIconImage appIcon;
     Dependencies deps;
     std::vector<DeviceInfo> controllers;
     std::array<Page*, kPageCount> pages{};
@@ -259,7 +260,7 @@ void MainWindow::buildShell() {
     };
 
     std::vector<NavigationRail::Item> items{
-        {std::wstring(glyph::kGamepad), std::wstring(text(Text::NavDevices))},
+        {std::wstring(glyph::kDevices), std::wstring(text(Text::NavDevices))},
         {std::wstring(glyph::kChart), std::wstring(text(Text::NavHistory))},
         {std::wstring(glyph::kVolume), std::wstring(text(Text::NavSounds))},
         {std::wstring(glyph::kSettings), std::wstring(text(Text::NavSettings))},
@@ -283,7 +284,7 @@ void MainWindow::buildShell() {
         });
 
     PageSlot& slot = shell->slot();
-    m_impl->pages[0] = slot.emplace<ControllersPage>(context);
+    m_impl->pages[0] = slot.emplace<DevicesPage>(context);
     m_impl->pages[1] = slot.emplace<HistoryPage>(context);
     m_impl->pages[2] = slot.emplace<SoundsPage>(context);
     m_impl->pages[3] = slot.emplace<SettingsPage>(context);
@@ -457,10 +458,10 @@ void MainWindow::drawTitleBar(Canvas& canvas, D2D1_RECT_F body) const {
     auto const& palette = theme().colors();
     float const bottom = body.top + Metrics::titleBarHeight;
 
-    drawIcon(canvas, glyph::kGamepad, kTitleIconSize,
-             D2D1::RectF(body.left + kTitleIconLeft, body.top,
-                         body.left + kTitleIconLeft + kTitleIconSize, bottom),
-             palette.accent);
+    float const iconTop = body.top + (Metrics::titleBarHeight - kTitleIconSize) * 0.5f;
+    m_impl->appIcon.draw(canvas, D2D1::RectF(body.left + kTitleIconLeft, iconTop,
+                                             body.left + kTitleIconLeft + kTitleIconSize,
+                                             iconTop + kTitleIconSize));
     drawText(canvas, text(Text::AppName), theme().textFormat(TypeStyle::Caption),
              D2D1::RectF(body.left + kTitleTextLeft, body.top,
                          body.right - m_impl->shell->captionWidth(), bottom),

@@ -202,8 +202,8 @@ void HistoryPage::build(StackPanel& column) {
     for (auto const& controller : controllers) {
         names.push_back(controller.name);
     }
-    auto* pick = column.emplace<SettingsCard>(glyph::kGamepad,
-                                              std::wstring(text(Text::HistoryController)));
+    auto* pick = column.emplace<SettingsCard>(glyph::kDevices,
+                                              std::wstring(text(Text::HistoryDevice)));
     pick->setControl(std::make_unique<ComboBox>(std::move(names), m_controller, [this](int index) {
         m_controller = index;
         invalidateContent();

@@ -17,7 +17,7 @@ namespace {
 
 std::wstring_view eventGlyph(NotificationEvent event) {
     switch (event) {
-        case NotificationEvent::Connected: return glyph::kGamepad;
+        case NotificationEvent::Connected: return glyph::kDevices;
         case NotificationEvent::Disconnected: return glyph::kClose;
         case NotificationEvent::BatteryLow: return glyph::kBatteryUnknown;
         case NotificationEvent::BatteryCritical: return glyph::kWarning;
