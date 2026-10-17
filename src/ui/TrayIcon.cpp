@@ -10,6 +10,7 @@
 #include "core/Strings.h"
 #include "ui/Drawing.h"
 #include "ui/Theme.h"
+#include "ui/TrayRetry.h"
 #include "ui/TrayText.h"
 
 namespace peek::ui {
@@ -26,12 +27,6 @@ constexpr UINT kMenuRefresh = 2;
 constexpr UINT kMenuExit = 3;
 // Every device line shares one command: it opens the window, which already lists them all.
 constexpr UINT kMenuDevice = 4;
-
-// Started from Run at logon, this process regularly beats Explorer's notification area to
-// the punch and NIM_ADD fails with ERROR_TIMEOUT. Retrying for a minute covers that and
-// the transient busy-shell case; after that the shell is not coming.
-constexpr UINT kRetryIntervalMs = 2000;
-constexpr int kAddAttempts = 30;
 
 SIZE requestedIconSize(HWND owner) {
     // The notification area lives on the taskbar, which on a mixed-DPI desktop is not
@@ -149,7 +144,8 @@ struct TrayIcon::Impl {
     HWND owner = nullptr;
     HICON icon = nullptr;
     bool added = false;
-    int attemptsLeft = kAddAttempts;
+    // NIM_ADD failures since the icon was last up; picks the retry delay, see TrayRetry.h.
+    int failedAttempts = 0;
     UINT_PTR retryTimer = 0;
     std::wstring tip;
     // The menu is built from these when it opens, so it shows the last poll, not a refresh.
@@ -203,10 +199,11 @@ void CALLBACK TrayIcon::Impl::retryProc(HWND, UINT, UINT_PTR timer, DWORD) {
 }
 
 void TrayIcon::Impl::scheduleRetry() {
-    if (retryTimer != 0 || attemptsLeft <= 0) {
+    if (retryTimer != 0) {
         return;
     }
-    retryTimer = SetTimer(nullptr, 0, kRetryIntervalMs, &Impl::retryProc);
+    auto const delay = static_cast<UINT>(trayRetryDelay(failedAttempts).count());
+    retryTimer = SetTimer(nullptr, 0, delay, &Impl::retryProc);
     if (retryTimer == 0) {
         log::error(L"Could not start the tray icon retry timer: {}",
                    describeHresult(HRESULT_FROM_WIN32(GetLastError())));
@@ -249,18 +246,24 @@ bool TrayIcon::Impl::install() {
     data.hIcon = icon;
     wcsncpy_s(data.szTip, tip.c_str(), _TRUNCATE);
 
-    --attemptsLeft;
     if (!Shell_NotifyIconW(NIM_ADD, &data)) {
         DWORD const error = GetLastError();
-        if (attemptsLeft > 0) {
-            log::info(L"The notification area is not ready yet ({}); retrying",
-                      describeHresult(HRESULT_FROM_WIN32(error)));
+        // A shell that is still starting can time out on NIM_ADD and add the icon anyway, and
+        // every later NIM_ADD for the same id is then refused because it already exists. The
+        // icon is there in that case, and NIM_MODIFY is the call that can tell.
+        if (!Shell_NotifyIconW(NIM_MODIFY, &data)) {
+            ++failedAttempts;
+            if (shouldLogTrayFailure(failedAttempts)) {
+                log::info(L"The notification area is not ready yet ({}, attempt {}); retrying "
+                          L"in {} s",
+                          describeHresult(HRESULT_FROM_WIN32(error)), failedAttempts,
+                          trayRetryDelay(failedAttempts).count() / 1000);
+            }
             scheduleRetry();
-        } else {
-            log::error(L"Giving up on the notification area icon: {}",
-                       describeHresult(HRESULT_FROM_WIN32(error)));
+            return false;
         }
-        return false;
+        log::info(L"The notification area already had the icon after a failed add ({})",
+                  describeHresult(HRESULT_FROM_WIN32(error)));
     }
 
     // uVersion shares a union with uTimeout, so it is only ever set for NIM_SETVERSION.
@@ -275,7 +278,11 @@ bool TrayIcon::Impl::install() {
     }
 
     added = true;
-    attemptsLeft = kAddAttempts;
+    if (failedAttempts > 0) {
+        log::info(L"The notification area icon is up after {} failed attempt(s)",
+                  failedAttempts);
+    }
+    failedAttempts = 0;
     return true;
 }
 
@@ -458,8 +465,10 @@ void TrayIcon::remove() {
 void TrayIcon::reAdd() {
     // Every icon Explorer knew about died with it, so NIM_MODIFY would fail: the only way
     // back is a fresh NIM_ADD.
+    // Explorer is up again, so whatever schedule was running for the old one starts over.
+    m_impl->cancelRetry();
     m_impl->added = false;
-    m_impl->attemptsLeft = kAddAttempts;
+    m_impl->failedAttempts = 0;
     m_impl->install();
 }
 
