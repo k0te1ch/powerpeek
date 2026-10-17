@@ -38,6 +38,7 @@ enum class Text {
     ConnectionUsb,
     ConnectionWireless,
     ConnectionBluetooth,
+    ConnectionReceiver,
     EstimatedRemaining,
     UpdatedJustNow,
     UpdatedMinutesAgo,

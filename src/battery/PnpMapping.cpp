@@ -2,6 +2,8 @@
 
 #include <format>
 
+#include "core/Digest.h"
+
 namespace peek::pnp {
 namespace {
 
@@ -105,18 +107,7 @@ std::wstring deviceIdFromContainer(GUID const& container) {
 }
 
 std::wstring deviceIdFromInstance(std::wstring_view instanceId) {
-    // FNV-1a over the code units. A hash, not a cipher: the point is only that the battery log
-    // ends up holding something that keys the device without spelling out its address.
-    constexpr std::uint64_t kOffsetBasis = 14695981039346656037ULL;
-    constexpr std::uint64_t kPrime = 1099511628211ULL;
-
-    std::uint64_t digest = kOffsetBasis;
-    for (wchar_t const unit : instanceId) {
-        auto const value = static_cast<std::uint16_t>(unit);
-        digest = (digest ^ (value & 0xff)) * kPrime;
-        digest = (digest ^ (value >> 8)) * kPrime;
-    }
-    return std::format(L"pnp:device:{:016x}", digest);
+    return std::format(L"pnp:device:{:016x}", digestOf(instanceId));
 }
 
 }  // namespace peek::pnp
