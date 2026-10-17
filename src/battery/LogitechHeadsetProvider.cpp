@@ -26,6 +26,21 @@ bool isDongleCollection(hid::Collection const& collection) noexcept {
            collection.outputLength == logitech::kReportLength;
 }
 
+// For the log, which stays in English whatever the interface language is.
+wchar_t const* describeCharge(ChargeState charge) noexcept {
+    switch (charge) {
+        case ChargeState::Discharging:
+            return L"on battery";
+        case ChargeState::Charging:
+            return L"charging";
+        case ChargeState::Full:
+            return L"full";
+        case ChargeState::Unknown:
+            break;
+    }
+    return L"charge state unknown";
+}
+
 std::optional<logitech::Report> ask(std::wstring const& path, logitech::Report const& request,
                                     hid::Exchange& exchange) {
     exchange = hid::exchange(path, request, logitech::kReportLength, &logitech::isOwnReply,
@@ -122,7 +137,7 @@ std::vector<DeviceInfo> LogitechHeadsetProvider::poll() {
             switch (status) {
                 case Status::Answering:
                     log::info(L"{} ({}) reads {} % at {} mV, {}", dongle.name, dongle.id, percent,
-                              reading->millivolts, toString(reading->charge));
+                              reading->millivolts, describeCharge(reading->charge));
                     break;
                 case Status::Off:
                     log::info(L"{} ({}) gave no battery reading: the headset is off or out of "
