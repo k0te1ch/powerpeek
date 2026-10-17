@@ -10,6 +10,7 @@
 
 #include "battery/CompxBatteryProvider.h"
 #include "battery/DeviceMerge.h"
+#include "battery/LogitechHeadsetProvider.h"
 #include "battery/PnpBatteryProvider.h"
 #include "battery/SnapshotPolicy.h"
 #include "battery/WinRtBatteryProvider.h"
@@ -114,6 +115,7 @@ void ControllerMonitor::Impl::run() {
         XInputBatteryProvider xinputProvider;
         PnpBatteryProvider pnpProvider;
         CompxBatteryProvider compxProvider;
+        LogitechHeadsetProvider headsetProvider;
         std::vector<DeviceInfo> pnpDevices;
         std::optional<std::chrono::steady_clock::time_point> pnpSweptAt;
         std::map<std::wstring, std::chrono::system_clock::time_point> firstSeen;
@@ -153,6 +155,7 @@ void ControllerMonitor::Impl::run() {
                 // Looking for mouse receivers walks the HID interfaces, which is the same kind
                 // of cost for the same kind of change, so it keeps the same schedule.
                 compxProvider.rescan();
+                headsetProvider.rescan();
                 pnpSweptAt = sweptAgo;
             }
             for (DeviceInfo const& device : pnpDevices) {
@@ -172,6 +175,10 @@ void ControllerMonitor::Impl::run() {
             std::vector<DeviceInfo> mice = compxProvider.poll();
             list.insert(list.end(), std::make_move_iterator(mice.begin()),
                         std::make_move_iterator(mice.end()));
+            // Headsets on Logitech dongles, the same way and for the same reason.
+            std::vector<DeviceInfo> headsets = headsetProvider.poll();
+            list.insert(list.end(), std::make_move_iterator(headsets.begin()),
+                        std::make_move_iterator(headsets.end()));
             // The pad sources cannot be correlated -- an XInput slot carries no device
             // identity -- so they are never joined; XInput only speaks when WinRT is silent.
             // The device tree is checked too, so that a connected headset does not keep the
