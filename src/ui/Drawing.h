@@ -240,6 +240,9 @@ struct ControllerArt {
     D2D1_COLOR_F badge{};      // the connection glyph
     D2D1_COLOR_F badgeFill{};
     ControllerLink link = ControllerLink::None;
+    // Draw over-ear headphones instead of a pad; the same colours and fitted box apply, with
+    // the headband carrying the level colour where the pad has its guide button.
+    bool headphones = false;
 };
 
 // A pad seen from the front, fitted into `bounds` and centred there.

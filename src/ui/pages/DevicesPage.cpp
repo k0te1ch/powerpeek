@@ -437,10 +437,11 @@ private:
         return m_alert == TileAlert::Critical ? palette.critical : palette.caution;
     }
 
-    // The pad and the mouse keep their portraits; every other kind gets its Fluent glyph on a
-    // badge of the same height and a similar tone, so a row of mixed tiles reads as one set.
+    // The pad, the headphones and the mouse keep their portraits; every other kind gets
+    // its Fluent glyph on a badge of the same height and a similar tone, so a row of mixed
+    // tiles reads as one set.
     void paintKind(Canvas& canvas, float left, float centreY) const {
-        if (m_kind == DeviceKind::Gamepad) {
+        if (m_kind == DeviceKind::Gamepad || m_kind == DeviceKind::Headset) {
             drawControllerArt(canvas,
                               D2D1::RectF(left, centreY - kArtHeight * 0.5f,
                                           left + controllerArtWidth(kArtHeight),
@@ -522,6 +523,7 @@ private:
         art.badge = palette.textSecondary;
         art.badgeFill = shade(0.18f);
         art.link = m_link;
+        art.headphones = m_kind == DeviceKind::Headset;
         return art;
     }
 

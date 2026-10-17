@@ -217,6 +217,67 @@ void drawFaceButtons(Canvas& canvas, ArtSpace const& space, ControllerArt const&
     }
 }
 
+// Over-ear headphones seen from the front, in the same unit-tall space as the pad: a band
+// arching over two ear cups. The band is the one place the level colour appears, as the guide
+// button is on the pad, and the connection badge sits in the gap under it.
+std::wstring_view linkGlyph(ControllerLink link);
+
+constexpr D2D1_POINT_2F kBandCenter{0.000f, 0.500f};
+constexpr float kBandRadius = 0.370f;
+constexpr float kBandWidth = 0.070f;
+constexpr D2D1_POINT_2F kRightCup{0.405f, 0.560f};
+constexpr float kCupHalfWidth = 0.105f;
+constexpr float kCupHalfHeight = 0.215f;
+constexpr float kCupPadHalfWidth = 0.045f;
+constexpr float kCupPadHalfHeight = 0.150f;
+constexpr D2D1_POINT_2F kHeadphonesBadge{0.000f, 0.700f};
+
+void drawHeadphones(Canvas& canvas, ArtSpace const& space, ControllerArt const& art) {
+    // The band: a half circle from one cup to the other, stroked rather than filled so the
+    // arch keeps an even thickness at any size.
+    com_ptr<ID2D1GeometrySink> sink;
+    if (auto band = beginPath(canvas, sink)) {
+        float const r = kBandRadius * space.unit;
+        auto const left = space.at(kBandCenter.x - kBandRadius, kBandCenter.y);
+        auto const right = space.at(kBandCenter.x + kBandRadius, kBandCenter.y);
+        sink->BeginFigure(left, D2D1_FIGURE_BEGIN_HOLLOW);
+        sink->AddArc(D2D1::ArcSegment(right, D2D1::SizeF(r, r), 0.0f,
+                                      D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+        sink->EndFigure(D2D1_FIGURE_END_OPEN);
+        sink->Close();
+
+        if (auto* brush = canvas.brush(art.guide)) {
+            canvas.target().DrawGeometry(band.get(), brush, kBandWidth * space.unit);
+        }
+    }
+
+    for (float const side : {-1.0f, 1.0f}) {
+        D2D1_POINT_2F const cup{kRightCup.x * side, kRightCup.y};
+        D2D1_RECT_F const shell = space.box(cup, kCupHalfWidth, kCupHalfHeight);
+        fillRounded(canvas, shell, kCupHalfWidth * space.unit, art.body);
+        if (auto* edge = canvas.brush(art.bodyEdge)) {
+            auto const rounded = D2D1::RoundedRect(shell, kCupHalfWidth * space.unit,
+                                                   kCupHalfWidth * space.unit);
+            canvas.target().DrawRoundedRectangle(rounded, edge,
+                                                 std::max(canvas.pixel(), space.unit * 0.018f));
+        }
+        // The cushion on the inner face, which is what makes the cup read as an ear cup and
+        // not as a capsule.
+        D2D1_POINT_2F const pad{cup.x - side * (kCupHalfWidth - kCupPadHalfWidth), cup.y};
+        fillRounded(canvas, space.box(pad, kCupPadHalfWidth, kCupPadHalfHeight),
+                    kCupPadHalfWidth * space.unit, art.detail);
+    }
+
+    auto const badge = linkGlyph(art.link);
+    if (badge.empty() || space.unit < kBadgeThreshold) {
+        return;
+    }
+    float const radius = kBadgeRadius * space.unit;
+    fillCircle(canvas, space.at(kHeadphonesBadge), radius, art.badgeFill);
+    drawIcon(canvas, badge, radius * 1.15f,
+             space.box(kHeadphonesBadge, kBadgeRadius, kBadgeRadius), art.badge);
+}
+
 std::wstring_view linkGlyph(ControllerLink link) {
     switch (link) {
         case ControllerLink::Usb:
@@ -1055,6 +1116,11 @@ void drawControllerArt(Canvas& canvas, D2D1_RECT_F bounds, ControllerArt const& 
     space.center = D2D1::Point2F((bounds.left + bounds.right) * 0.5f,
                                  (bounds.top + bounds.bottom) * 0.5f);
     if (space.unit <= 0.0f) {
+        return;
+    }
+
+    if (art.headphones) {
+        drawHeadphones(canvas, space, art);
         return;
     }
 
