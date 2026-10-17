@@ -152,6 +152,7 @@ set(PP_CORE_SOURCES
     ui/Animation.cpp
     ui/DeviceGrid.cpp
     ui/Quantise.cpp
+    ui/TrayRetry.cpp
     ui/TrayText.cpp)
 list(TRANSFORM PP_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/src/")
 
