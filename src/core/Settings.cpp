@@ -134,6 +134,10 @@ json::Value toJson(Settings const& settings) {
     root.set("trayStyle", enumName(kTrayStyleNames, settings.trayStyle));
     root.set("trayColor", enumName(kTrayColorNames, settings.trayColor));
     root.set("toastPosition", enumName(kToastPositionNames, settings.toastPosition));
+    root.set("widgetEnabled", settings.widgetEnabled);
+    root.set("widgetPlaced", settings.widgetPlaced);
+    root.set("widgetX", settings.widgetX);
+    root.set("widgetY", settings.widgetY);
     root.set("backdrop", enumName(kBackdropNames, settings.backdrop));
     root.set("windowOpacity", settings.windowOpacity);
 
@@ -344,6 +348,11 @@ Settings Settings::load(std::filesystem::path const& file) {
     settings.trayColor = parseEnum(kTrayColorNames, root["trayColor"], settings.trayColor);
     settings.toastPosition =
         parseEnum(kToastPositionNames, root["toastPosition"], settings.toastPosition);
+
+    settings.widgetEnabled = root["widgetEnabled"].asBool(settings.widgetEnabled);
+    settings.widgetPlaced = root["widgetPlaced"].asBool(settings.widgetPlaced);
+    settings.widgetX = root["widgetX"].asInt(settings.widgetX);
+    settings.widgetY = root["widgetY"].asInt(settings.widgetY);
 
     settings.backdrop = parseEnum(kBackdropNames, root["backdrop"], settings.backdrop);
     settings.windowOpacity =

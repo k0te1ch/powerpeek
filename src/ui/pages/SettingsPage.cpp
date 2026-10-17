@@ -338,6 +338,14 @@ void SettingsPage::addAppearance(StackPanel& column) {
             m_context.applySettings(std::move(next));
         }));
 
+    auto* widgetCard = group->addCard(glyph::kGamepad, std::wstring(text(Text::WidgetLabel)));
+    widgetCard->setDescription(std::wstring(text(Text::WidgetDesc)));
+    widgetCard->setControl(std::make_unique<ToggleSwitch>(current.widgetEnabled, [this](bool on) {
+        Settings next = SettingsStore::instance().get();
+        next.widgetEnabled = on;
+        m_context.applySettings(std::move(next));
+    }));
+
     addBackdrop(*group);
 }
 

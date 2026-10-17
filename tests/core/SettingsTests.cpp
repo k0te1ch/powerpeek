@@ -69,6 +69,10 @@ void checkSettingsMatch(Settings const& actual, Settings const& expected) {
     CHECK(actual.trayStyle == expected.trayStyle);
     CHECK(actual.trayColor == expected.trayColor);
     CHECK(actual.toastPosition == expected.toastPosition);
+    CHECK(actual.widgetEnabled == expected.widgetEnabled);
+    CHECK(actual.widgetPlaced == expected.widgetPlaced);
+    CHECK(actual.widgetX == expected.widgetX);
+    CHECK(actual.widgetY == expected.widgetY);
     CHECK(actual.backdrop == expected.backdrop);
     CHECK(actual.windowOpacity == doctest::Approx(expected.windowOpacity));
     CHECK(actual.masterVolume == doctest::Approx(expected.masterVolume));
@@ -902,6 +906,10 @@ TEST_CASE("settings: save then load round-trips every field") {
     written.trayStyle = TrayStyle::Percentage;
     written.trayColor = TrayColor::Pink;
     written.toastPosition = ToastPosition::TopLeft;
+    written.widgetEnabled = true;
+    written.widgetPlaced = true;
+    written.widgetX = -1280;
+    written.widgetY = 96;
     written.backdrop = BackdropMode::Mica;
     written.windowOpacity = 0.85f;
     written.masterVolume = 0.35f;

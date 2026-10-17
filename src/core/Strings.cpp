@@ -178,6 +178,14 @@ constexpr Entry kTable[] = {
     {Text::ToastPositionBottomLeft, L"Bottom left", L"Снизу слева"},
     {Text::ToastPositionBottomCenter, L"Bottom centre", L"Снизу по центру"},
     {Text::ToastPositionBottomRight, L"Bottom right", L"Снизу справа"},
+    {Text::WidgetLabel, L"Desktop widget", L"Виджет на рабочем столе"},
+    {Text::WidgetDesc,
+     L"A small card on the desktop with the charge of every connected device. It stays "
+     L"behind other windows; drag it where you want it, double-click to open the app.",
+     L"Небольшая карточка на рабочем столе с зарядом всех подключённых устройств. Она "
+     L"остаётся под другими окнами: перетащите её, куда удобно, двойной щелчок открывает "
+     L"приложение."},
+    {Text::WidgetHide, L"Hide widget", L"Скрыть виджет"},
     {Text::BackdropLabel, L"Window backdrop", L"Фон окна"},
     {Text::BackdropDesc, L"What shows through behind the window. Only what this system can "
                          L"actually draw is offered.",
